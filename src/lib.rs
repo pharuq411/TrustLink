@@ -79,6 +79,7 @@ impl TrustLinkContract {
         Validation::require_admin(&env, &admin)?;
 
         Storage::add_issuer(&env, &issuer);
+        Events::issuer_registered(&env, &issuer, &admin);
         Ok(())
     }
     /// Return a deduplicated list of valid claim types for a subject.
@@ -150,6 +151,7 @@ impl TrustLinkContract {
         Validation::require_admin(&env, &admin)?;
 
         Storage::remove_issuer(&env, &issuer);
+        Events::issuer_removed(&env, &issuer, &admin);
         Ok(())
     }
 

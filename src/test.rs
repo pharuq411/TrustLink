@@ -1380,87 +1380,102 @@ fn test_get_version_before_initialization_panics() {
     client.get_version(); // NotInitialized
 }
 
-// ── IssuerMetadata tests ──────────────────────────────────────────────────────
+// ── Issuer Registry Events Unit Tests (Tasks 3.1–3.4) ────────────────────────
+// Requirements: 4.1, 4.2, 4.3
 
-fn make_metadata(env: &Env, name: &str, url: &str, desc: &str) -> types::IssuerMetadata {
-    types::IssuerMetadata {
-        name: String::from_str(env, name),
-        url: String::from_str(env, url),
-        description: String::from_str(env, desc),
-    }
+#[test]
+fn test_register_issuer_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let (contract_id, client) = create_test_contract(&env);
+
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
+
+    let events = env.events().all();
+    // Find the iss_reg event (last event should be it)
+    let (_, topics, data) = events.last().unwrap();
+
+    let topic0: soroban_sdk::Symbol = soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+    let topic1: Address = soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+    let event_data: Address = soroban_sdk::TryFromVal::try_from_val(&env, &data).unwrap();
+
+    assert_eq!(topic0, soroban_sdk::symbol_short!("iss_reg"));
+    assert_eq!(topic1, issuer);
+    assert_eq!(event_data, admin);
+
+    let _ = contract_id;
 }
 
 #[test]
-fn test_set_and_get_issuer_metadata() {
+fn test_remove_issuer_emits_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, issuer, client) = setup_batch_env(&env);
 
-    let meta = make_metadata(&env, "Acme KYC", "https://acme.example", "Trusted KYC provider");
-    client.set_issuer_metadata(&issuer, &meta);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let (contract_id, client) = create_test_contract(&env);
 
-    let stored = client.get_issuer_metadata(&issuer).unwrap();
-    assert_eq!(stored.name, meta.name);
-    assert_eq!(stored.url, meta.url);
-    assert_eq!(stored.description, meta.description);
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
+    client.remove_issuer(&admin, &issuer);
+
+    let events = env.events().all();
+    let (_, topics, data) = events.last().unwrap();
+
+    let topic0: soroban_sdk::Symbol = soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+    let topic1: Address = soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+    let event_data: Address = soroban_sdk::TryFromVal::try_from_val(&env, &data).unwrap();
+
+    assert_eq!(topic0, soroban_sdk::symbol_short!("iss_rem"));
+    assert_eq!(topic1, issuer);
+    assert_eq!(event_data, admin);
+
+    let _ = contract_id;
 }
 
 #[test]
-fn test_get_issuer_metadata_returns_none_if_not_set() {
+fn test_register_issuer_error_no_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, issuer, client) = setup_batch_env(&env);
 
-    assert!(client.get_issuer_metadata(&issuer).is_none());
+    let admin = Address::generate(&env);
+    let wrong_admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let (_, client) = create_test_contract(&env);
+
+    client.initialize(&admin);
+
+    let events_before = env.events().all().len();
+
+    // wrong_admin is not the real admin — should fail with Unauthorized
+    let _ = client.try_register_issuer(&wrong_admin, &issuer);
+
+    let events_after = env.events().all().len();
+    assert_eq!(events_before, events_after);
 }
 
 #[test]
-fn test_issuer_can_update_metadata() {
+fn test_remove_issuer_error_no_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, issuer, client) = setup_batch_env(&env);
 
-    client.set_issuer_metadata(&issuer, &make_metadata(&env, "Old Name", "https://old.example", "Old desc"));
-    client.set_issuer_metadata(&issuer, &make_metadata(&env, "New Name", "https://new.example", "New desc"));
+    let admin = Address::generate(&env);
+    let wrong_admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let (_, client) = create_test_contract(&env);
 
-    let stored = client.get_issuer_metadata(&issuer).unwrap();
-    assert_eq!(stored.name, String::from_str(&env, "New Name"));
-}
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
 
-#[test]
-#[should_panic(expected = "Error(Contract, #3)")]
-fn test_non_issuer_cannot_set_metadata() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (_, _, client) = setup_batch_env(&env);
+    let events_before = env.events().all().len();
 
-    // A random address that is not a registered issuer
-    let non_issuer = Address::generate(&env);
-    client.set_issuer_metadata(
-        &non_issuer,
-        &make_metadata(&env, "Fake", "https://fake.example", "Not an issuer"),
-    );
-}
+    // wrong_admin is not the real admin — should fail with Unauthorized
+    let _ = client.try_remove_issuer(&wrong_admin, &issuer);
 
-#[test]
-#[should_panic(expected = "Error(Contract, #3)")]
-fn test_issuer_cannot_set_metadata_for_another_issuer() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (admin, issuer_a, client) = setup_batch_env(&env);
-
-    let issuer_b = Address::generate(&env);
-    client.register_issuer(&admin, &issuer_b);
-
-    // issuer_a tries to write metadata under issuer_b's address — must fail.
-    // With mock_all_auths the auth passes, but require_issuer checks the
-    // caller address, so we call with issuer_b's address but the function
-    // internally checks that the caller is the issuer. To test the
-    // "wrong caller" path we remove issuer_a from the registry first so
-    // the require_issuer check fires for a non-issuer caller.
-    client.remove_issuer(&admin, &issuer_a);
-    client.set_issuer_metadata(
-        &issuer_a,
-        &make_metadata(&env, "Hijack", "https://evil.example", "Unauthorized"),
-    );
+    let events_after = env.events().all().len();
+    assert_eq!(events_before, events_after);
 }

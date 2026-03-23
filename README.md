@@ -236,6 +236,22 @@ topics: ["revoked", issuer_address]
 data: attestation_id
 ```
 
+**AttestationRenewed:**
+```rust
+topics: ["renewed", issuer_address]
+data: (attestation_id, new_expiration)
+```
+
+**IssuerRegistered:**
+```rust
+topics: ["iss_reg", issuer_address]
+data: admin_address
+```
+
+**IssuerRemoved:**
+```rust
+topics: ["iss_rem", issuer_address]
+data: admin_address
 **ClaimTypeRegistered:**
 ```rust
 topics: ["clmtype"]

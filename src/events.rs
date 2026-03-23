@@ -94,4 +94,20 @@ impl Events {
             (attestation_id.clone(), new_expiration),
         );
     }
+
+    /// Emit event when an issuer is registered
+    pub fn issuer_registered(env: &Env, issuer: &Address, admin: &Address) {
+        env.events().publish(
+            (symbol_short!("iss_reg"), issuer.clone()),
+            admin.clone(),
+        );
+    }
+
+    /// Emit event when an issuer is removed
+    pub fn issuer_removed(env: &Env, issuer: &Address, admin: &Address) {
+        env.events().publish(
+            (symbol_short!("iss_rem"), issuer.clone()),
+            admin.clone(),
+        );
+    }
 }
