@@ -285,9 +285,13 @@ soroban contract invoke \
 
 MIT
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a history of notable changes.
+
 ## Contributing
 
-Contributions welcome! Please ensure all tests pass and code is formatted before submitting PRs.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code style requirements, and the PR process.
 
 ## Support
 

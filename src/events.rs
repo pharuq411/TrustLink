@@ -1,14 +1,25 @@
+//! Event emission for TrustLink.
+//!
+//! All state-changing operations and expiration checks emit a Soroban event so
+//! that off-chain indexers can react without polling contract storage.
+
 use soroban_sdk::{symbol_short, Address, Env, String};
 use crate::types::Attestation;
 
+/// Emits TrustLink contract events.
 pub struct Events;
 
 impl Events {
-    /// Emit event when an attestation is created
+    /// Emit an event when a new attestation is created.
     ///
-    /// Schema:
-    ///   topics: ("created", subject: Address)
-    ///   data:   (attestation_id: String, issuer: Address, claim_type: String, timestamp: u64)
+    /// # Event schema
+    /// ```text
+    /// topics: ("created", subject: Address)
+    /// data:   (attestation_id: String, issuer: Address, claim_type: String, timestamp: u64)
+    /// ```
+    ///
+    /// # Parameters
+    /// - `attestation` — the newly created attestation.
     pub fn attestation_created(env: &Env, attestation: &Attestation) {
         env.events().publish(
             (symbol_short!("created"), attestation.subject.clone()),
@@ -21,11 +32,17 @@ impl Events {
         );
     }
 
-    /// Emit event when an attestation is revoked
+    /// Emit an event when an attestation is revoked.
     ///
-    /// Schema:
-    ///   topics: ("revoked", issuer: Address)
-    ///   data:   attestation_id: String
+    /// # Event schema
+    /// ```text
+    /// topics: ("revoked", issuer: Address)
+    /// data:   attestation_id: String
+    /// ```
+    ///
+    /// # Parameters
+    /// - `attestation_id` — ID of the revoked attestation.
+    /// - `issuer` — address that performed the revocation.
     pub fn attestation_revoked(env: &Env, attestation_id: &String, issuer: &Address) {
         env.events().publish(
             (symbol_short!("revoked"), issuer.clone()),
@@ -33,12 +50,20 @@ impl Events {
         );
     }
 
-    /// Emit event when an expired attestation is encountered during a check.
-    /// Not emitted for revoked attestations.
+    /// Emit an event when an expired attestation is encountered during a check.
     ///
-    /// Schema:
-    ///   topics: ("expired", subject: Address)
-    ///   data:   attestation_id: String
+    /// This event is **not** emitted for revoked attestations; revocation takes
+    /// precedence over expiration in [`crate::types::Attestation::get_status`].
+    ///
+    /// # Event schema
+    /// ```text
+    /// topics: ("expired", subject: Address)
+    /// data:   attestation_id: String
+    /// ```
+    ///
+    /// # Parameters
+    /// - `attestation_id` — ID of the expired attestation.
+    /// - `subject` — address the attestation was issued about.
     pub fn attestation_expired(env: &Env, attestation_id: &String, subject: &Address) {
         env.events().publish(
             (symbol_short!("expired"), subject.clone()),
