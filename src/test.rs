@@ -174,6 +174,103 @@ fn test_expired_attestation() {
 }
 
 #[test]
+fn test_expired_event_emitted_on_has_valid_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let (contract_id, client) = create_test_contract(&env);
+
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
+
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let current_time = env.ledger().timestamp();
+    client.create_attestation(&issuer, &subject, &claim_type, &Some(current_time + 100));
+
+    env.ledger().with_mut(|li| li.timestamp = current_time + 200);
+    assert!(!client.has_valid_claim(&subject, &claim_type));
+
+    // Verify at least one "expired" event was emitted by this contract
+    let expired_sym = soroban_sdk::symbol_short!("expired");
+    let found = env.events().all().iter().any(|(id, topics, _)| {
+        id == contract_id && topics.get(0) == Some(expired_sym.into())
+    });
+    assert!(found, "expected an expired event to be emitted");
+}
+
+#[test]
+fn test_expired_event_emitted_on_get_attestation_status() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let (contract_id, client) = create_test_contract(&env);
+
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
+
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let current_time = env.ledger().timestamp();
+    let attestation_id = client.create_attestation(
+        &issuer, &subject, &claim_type, &Some(current_time + 100),
+    );
+
+    env.ledger().with_mut(|li| li.timestamp = current_time + 200);
+
+    let status = client.get_attestation_status(&attestation_id);
+    assert_eq!(status, types::AttestationStatus::Expired);
+
+    let expired_sym = soroban_sdk::symbol_short!("expired");
+    let found = env.events().all().iter().any(|(id, topics, _)| {
+        id == contract_id && topics.get(0) == Some(expired_sym.into())
+    });
+    assert!(found, "expected an expired event to be emitted");
+}
+
+#[test]
+fn test_no_expired_event_for_revoked_attestation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let (contract_id, client) = create_test_contract(&env);
+
+    client.initialize(&admin);
+    client.register_issuer(&admin, &issuer);
+
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let current_time = env.ledger().timestamp();
+    let attestation_id = client.create_attestation(
+        &issuer, &subject, &claim_type, &Some(current_time + 100),
+    );
+    client.revoke_attestation(&issuer, &attestation_id);
+
+    env.ledger().with_mut(|li| li.timestamp = current_time + 200);
+
+    // Revoked takes precedence — status is Revoked, not Expired
+    let status = client.get_attestation_status(&attestation_id);
+    assert_eq!(status, types::AttestationStatus::Revoked);
+
+    // No expired event should have been emitted
+    let expired_sym = soroban_sdk::symbol_short!("expired");
+    let found = env.events().all().iter().any(|(id, topics, _)| {
+        id == contract_id && topics.get(0) == Some(expired_sym.into())
+    });
+    assert!(!found, "expired event must not be emitted for revoked attestation");
+}
+        })
+        .collect();
+    assert!(expired_events.is_empty());
+}
+
+#[test]
 #[should_panic(expected = "DuplicateAttestation")]
 fn test_duplicate_attestation() {
     let env = Env::default();

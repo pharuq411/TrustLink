@@ -121,7 +121,8 @@ impl TrustLinkContract {
         Ok(())
     }
 
-    /// Check if an address has a valid attestation of a given type
+    /// Check if an address has a valid attestation of a given type.
+    /// Emits an `expired` event for any expired (non-revoked) attestation encountered.
     pub fn has_valid_claim(
         env: Env,
         subject: Address,
@@ -129,18 +130,22 @@ impl TrustLinkContract {
     ) -> bool {
         let attestation_ids = Storage::get_subject_attestations(&env, &subject);
         let current_time = env.ledger().timestamp();
-        
+
         for id in attestation_ids.iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &id) {
                 if attestation.claim_type == claim_type {
                     let status = attestation.get_status(current_time);
-                    if status == AttestationStatus::Valid {
-                        return true;
+                    match status {
+                        AttestationStatus::Valid => return true,
+                        AttestationStatus::Expired => {
+                            Events::attestation_expired(&env, &id, &subject);
+                        }
+                        AttestationStatus::Revoked => {}
                     }
                 }
             }
         }
-        
+
         false
     }
 
@@ -152,14 +157,19 @@ impl TrustLinkContract {
         Storage::get_attestation(&env, &attestation_id)
     }
 
-    /// Get attestation status (valid, expired, or revoked)
+    /// Get attestation status (valid, expired, or revoked).
+    /// Emits an `expired` event if the attestation is expired (not revoked).
     pub fn get_attestation_status(
         env: Env,
         attestation_id: String,
     ) -> Result<AttestationStatus, Error> {
         let attestation = Storage::get_attestation(&env, &attestation_id)?;
         let current_time = env.ledger().timestamp();
-        Ok(attestation.get_status(current_time))
+        let status = attestation.get_status(current_time);
+        if status == AttestationStatus::Expired {
+            Events::attestation_expired(&env, &attestation_id, &attestation.subject);
+        }
+        Ok(status)
     }
 
     /// List attestations for a subject (paginated)
