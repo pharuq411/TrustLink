@@ -457,6 +457,35 @@ make clippy
 cargo test
 ```
 
+### Build Verification
+
+To verify the WASM build target compiles correctly for Stellar deployment:
+
+```bash
+# Build for wasm32-unknown-unknown target
+cargo build --target wasm32-unknown-unknown --release
+
+# Verify the WASM artifact exists
+ls -la target/wasm32-unknown-unknown/release/trustlink.wasm
+
+# Validate the WASM binary (requires wasm-tools)
+cargo install wasm-tools --locked
+wasm-tools validate target/wasm32-unknown-unknown/release/trustlink.wasm
+```
+
+Or use the Makefile target:
+
+```bash
+make build
+```
+
+**Build Verification Criteria:**
+- ✅ Build exits with code 0
+- ✅ `trustlink.wasm` artifact exists in `target/wasm32-unknown-unknown/release/`
+- ✅ WASM file size is reasonable (< 100KB after optimization)
+- ✅ No std dependency errors (`#![no_std]` is respected)
+- ✅ WASM binary is valid and can be inspected with wasm-objdump
+
 Tests cover:
 - Initialization and admin management
 - Issuer registration and removal
