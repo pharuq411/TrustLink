@@ -65,7 +65,8 @@
                 },
                 {
                   "u64": 100
-                }
+                },
+                "void"
               ]
             }
           },
@@ -86,7 +87,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                  "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                 },
                 "void"
               ]
@@ -250,7 +251,7 @@
                   "symbol": "Attestation"
                 },
                 {
-                  "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                  "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                 }
               ]
             },
@@ -270,7 +271,7 @@
                       "symbol": "Attestation"
                     },
                     {
-                      "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                      "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                     }
                   ]
                 },
@@ -296,7 +297,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                        "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                       }
                     },
                     {
@@ -330,6 +331,12 @@
                       "val": {
                         "u64": 0
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "valid_from"
+                      },
+                      "val": "void"
                     }
                   ]
                 }
@@ -423,7 +430,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                      "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                     }
                   ]
                 }
@@ -472,7 +479,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                      "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                     }
                   ]
                 }
@@ -516,6 +523,18 @@
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Version"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "string": "1.0.0"
                         }
                       }
                     ]
@@ -684,7 +703,8 @@
                 },
                 {
                   "u64": 100
-                }
+                },
+                "void"
               ]
             }
           }
@@ -710,7 +730,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                  "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -744,7 +764,7 @@
               }
             ],
             "data": {
-              "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+              "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
             }
           }
         }
@@ -775,7 +795,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                  "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                 },
                 "void"
               ]
@@ -803,7 +823,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                  "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                 },
                 "void"
               ]
@@ -853,7 +873,7 @@
               }
             ],
             "data": {
-              "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+              "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
             }
           }
         }
@@ -896,7 +916,7 @@
                     "symbol": "id"
                   },
                   "val": {
-                    "string": "n\\x9a\\x8aY\\x96\\0\\xbe\\x13\\xfa\\xd9\\x83N\\x95\\xabC\\xef"
+                    "string": "91a5ca78bf650742bd07d7dc73c889d5b762f3412e972dde83200cb1449b06e2"
                   }
                 },
                 {
@@ -930,6 +950,12 @@
                   "val": {
                     "u64": 0
                   }
+                },
+                {
+                  "key": {
+                    "symbol": "valid_from"
+                  },
+                  "val": "void"
                 }
               ]
             }

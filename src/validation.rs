@@ -1,4 +1,16 @@
 //! Authorization helpers for TrustLink.
+//!
+//! This module centralizes all permission checks so that contract entry points
+//! stay focused on business logic. Every guard returns `Result<(), Error>` and
+//! is called with the `?` operator, short-circuiting on the first failure.
+//!
+//! ## Guards
+//!
+//! - [`Validation::require_admin`] — verifies the caller matches the stored
+//!   admin address. Returns [`Error::NotInitialized`] if the contract has not
+//!   been set up yet, or [`Error::Unauthorized`] if the addresses differ.
+//! - [`Validation::require_issuer`] — verifies the caller is present in the
+//!   issuer registry. Returns [`Error::Unauthorized`] if not registered.
 
 use soroban_sdk::{Address, Env};
 use crate::storage::Storage;

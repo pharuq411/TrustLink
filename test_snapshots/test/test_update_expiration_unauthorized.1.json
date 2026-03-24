@@ -85,6 +85,7 @@
                 {
                   "string": "KYC_PASSED"
                 },
+                "void",
                 "void"
               ]
             }
@@ -247,7 +248,7 @@
                   "symbol": "Attestation"
                 },
                 {
-                  "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                  "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                 }
               ]
             },
@@ -267,7 +268,7 @@
                       "symbol": "Attestation"
                     },
                     {
-                      "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                      "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                     }
                   ]
                 },
@@ -293,7 +294,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                        "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                       }
                     },
                     {
@@ -327,6 +328,12 @@
                       "val": {
                         "u64": 0
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "valid_from"
+                      },
+                      "val": "void"
                     }
                   ]
                 }
@@ -465,7 +472,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                      "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                     }
                   ]
                 }
@@ -514,7 +521,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                      "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                     }
                   ]
                 }
@@ -558,6 +565,18 @@
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Version"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "string": "1.0.0"
                         }
                       }
                     ]
@@ -778,6 +797,7 @@
                 {
                   "string": "KYC_PASSED"
                 },
+                "void",
                 "void"
               ]
             }
@@ -804,7 +824,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                  "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -838,7 +858,7 @@
               }
             ],
             "data": {
-              "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+              "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
             }
           }
         }
@@ -869,7 +889,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                  "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                 },
                 {
                   "u64": 9999
@@ -962,7 +982,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
                     {
-                      "string": "\\x98\\x15/\\xa2J\\x17\\xa8\\x12[\\x96\\xfe#\\x0fHe0"
+                      "string": "3ceb2e4efc33a2d4e0097cfaae6c21968cfa2e9371d51a98efcb353e9d65e18f"
                     },
                     {
                       "u64": 9999

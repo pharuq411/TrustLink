@@ -171,6 +171,42 @@ if has_any {
 
 **Relationship to `has_valid_claim`:** Calling `has_any_claim` with a single-element list is equivalent to calling `has_valid_claim` with that same claim type. Use `has_valid_claim` when checking a single claim type, and `has_any_claim` when OR-logic across multiple claim types is needed.
 
+### Verify All of Multiple Claims
+
+`has_all_claims(env: Env, subject: Address, claim_types: Vec<String>) -> bool`
+
+| Parameter     | Type          | Description                                      |
+|---------------|---------------|--------------------------------------------------|
+| `env`         | `Env`         | Soroban environment (ledger time, storage)       |
+| `subject`     | `Address`     | The address whose attestations are queried       |
+| `claim_types` | `Vec<String>` | All claim type identifiers that must be valid    |
+
+Returns `true` only if the subject holds a valid attestation for **every** claim type in the list; `false` as soon as any one is missing, revoked, expired, or pending.
+
+**Behavior:**
+- Uses AND-logic — short-circuits and returns `false` on the first unsatisfied claim type
+- An empty `claim_types` list always returns `true` (vacuous truth)
+- Revoked, expired, and pending attestations are excluded from matching
+
+```rust
+// Require the user to hold ALL three credentials before proceeding
+let mut required = soroban_sdk::Vec::new(&env);
+required.push_back(String::from_str(&env, "KYC_PASSED"));
+required.push_back(String::from_str(&env, "ACCREDITED_INVESTOR"));
+required.push_back(String::from_str(&env, "AML_CLEARED"));
+
+let fully_verified = trustlink.has_all_claims(&user_address, &required);
+
+if fully_verified {
+    // All credentials present and valid — proceed with restricted operation
+} else {
+    // At least one credential is missing, revoked, or expired
+    return Err(Error::InsufficientCredentials);
+}
+```
+
+**Relationship to `has_any_claim`:** `has_any_claim` uses OR-logic (at least one match), while `has_all_claims` uses AND-logic (every claim must match). Use `has_all_claims` when a workflow requires a complete set of credentials, such as high-value lending that demands both KYC and AML clearance.
+
 ### Revoke Attestations
 
 ```rust
@@ -378,6 +414,10 @@ soroban contract invoke \
 ## Integration Guide
 
 For a step-by-step walkthrough covering Rust cross-contract patterns, JavaScript/TypeScript usage, error handling, and testnet testing, see [docs/integration-guide.md](docs/integration-guide.md).
+
+## Storage Layout
+
+For a full reference of every on-chain storage key, the data each holds, TTL policy, serialization format, and a practical RPC read example for indexer developers, see [docs/storage-layout.md](docs/storage-layout.md).
 
 ## License
 
