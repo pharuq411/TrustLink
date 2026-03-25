@@ -14,9 +14,9 @@ use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Stri
 use crate::events::Events;
 use crate::storage::Storage;
 use crate::types::{
-    Attestation, AttestationStatus, ClaimTypeInfo, ContractConfig, ContractMetadata, Endorsement,
-    Error, FeeConfig, GlobalStats, IssuerMetadata, IssuerStats, IssuerTier, MultiSigProposal,
-    TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
+    Attestation, AttestationStatus, AuditAction, AuditEntry, ClaimTypeInfo, ContractConfig,
+    ContractMetadata, Endorsement, Error, FeeConfig, GlobalStats, IssuerMetadata, IssuerStats,
+    IssuerTier, MultiSigProposal, TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
 };
 use crate::validation::Validation;
 
@@ -385,6 +385,16 @@ impl TrustLinkContract {
         store_attestation(&env, &attestation);
         Storage::increment_total_attestations(&env, 1);
         Events::attestation_created(&env, &attestation);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Created,
+                actor: attestation.issuer.clone(),
+                timestamp,
+                details: None,
+            },
+        );
         Ok(attestation_id)
     }
 
@@ -430,6 +440,16 @@ impl TrustLinkContract {
         store_attestation(&env, &attestation);
         Storage::increment_total_attestations(&env, 1);
         Events::attestation_imported(&env, &attestation);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Created,
+                actor: admin.clone(),
+                timestamp,
+                details: None,
+            },
+        );
         Ok(attestation_id)
     }
 
@@ -480,6 +500,16 @@ impl TrustLinkContract {
         store_attestation(&env, &attestation);
         Storage::increment_total_attestations(&env, 1);
         Events::attestation_bridged(&env, &attestation);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Created,
+                actor: attestation.issuer.clone(),
+                timestamp,
+                details: None,
+            },
+        );
         Ok(attestation_id)
     }
 
@@ -525,6 +555,16 @@ impl TrustLinkContract {
 
             store_attestation(&env, &attestation);
             Events::attestation_created(&env, &attestation);
+            Storage::append_audit_entry(
+                &env,
+                &attestation_id,
+                &AuditEntry {
+                    action: AuditAction::Created,
+                    actor: issuer.clone(),
+                    timestamp,
+                    details: None,
+                },
+            );
             ids.push_back(attestation_id);
         }
 
@@ -554,6 +594,17 @@ impl TrustLinkContract {
         attestation.revocation_reason = reason.clone();
         Storage::set_attestation(&env, &attestation);
         Events::attestation_revoked(&env, &attestation_id, &issuer, &reason);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Revoked,
+                actor: issuer.clone(),
+                timestamp: env.ledger().timestamp(),
+                details: reason.clone(),
+            },
+        );
+        Storage::increment_total_revocations(&env, 1);
         Ok(())
     }
 
@@ -583,6 +634,16 @@ impl TrustLinkContract {
             attestation.revocation_reason = reason.clone();
             Storage::set_attestation(&env, &attestation);
             Events::attestation_revoked(&env, &attestation_id, &issuer, &reason);
+            Storage::append_audit_entry(
+                &env,
+                &attestation_id,
+                &AuditEntry {
+                    action: AuditAction::Revoked,
+                    actor: issuer.clone(),
+                    timestamp: env.ledger().timestamp(),
+                    details: reason.clone(),
+                },
+            );
             count += 1;
         }
 
@@ -611,6 +672,16 @@ impl TrustLinkContract {
         attestation.expiration = new_expiration;
         Storage::set_attestation(&env, &attestation);
         Events::attestation_renewed(&env, &attestation_id, &issuer, new_expiration);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Renewed,
+                actor: issuer.clone(),
+                timestamp: env.ledger().timestamp(),
+                details: None,
+            },
+        );
         Ok(())
     }
 
@@ -639,6 +710,16 @@ impl TrustLinkContract {
         attestation.expiration = new_expiration;
         Storage::set_attestation(&env, &attestation);
         Events::attestation_updated(&env, &attestation_id, &issuer, new_expiration);
+        Storage::append_audit_entry(
+            &env,
+            &attestation_id,
+            &AuditEntry {
+                action: AuditAction::Updated,
+                actor: issuer.clone(),
+                timestamp: env.ledger().timestamp(),
+                details: None,
+            },
+        );
         Ok(())
     }
 
@@ -752,6 +833,15 @@ impl TrustLinkContract {
 
     pub fn get_attestation(env: Env, attestation_id: String) -> Result<Attestation, Error> {
         Storage::get_attestation(&env, &attestation_id)
+    }
+
+    /// Return the full audit log for `attestation_id`.
+    ///
+    /// The log is append-only and contains one entry per state change
+    /// (create, revoke, renew, update). Returns an empty list if the
+    /// attestation has no recorded history.
+    pub fn get_audit_log(env: Env, attestation_id: String) -> Vec<AuditEntry> {
+        Storage::get_audit_log(&env, &attestation_id)
     }
 
     pub fn get_attestation_status(

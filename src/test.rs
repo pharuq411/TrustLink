@@ -1336,3 +1336,140 @@ fn test_issuer_pagination_limit_one_returns_exactly_one() {
     create_n_attestations_for_subject(&env, &client, &issuer, &subject, 5);
     assert_eq!(client.get_issuer_attestations(&issuer, &0, &1).len(), 1);
 }
+
+// ── audit log ────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_audit_log_create_attestation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.len(), 1);
+    assert_eq!(log.get(0).unwrap().action, crate::types::AuditAction::Created);
+    assert_eq!(log.get(0).unwrap().actor, issuer);
+}
+
+#[test]
+fn test_audit_log_revoke_appends_entry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    client.revoke_attestation(&issuer, &id, &None);
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.len(), 2);
+    assert_eq!(log.get(1).unwrap().action, crate::types::AuditAction::Revoked);
+    assert_eq!(log.get(1).unwrap().actor, issuer);
+}
+
+#[test]
+fn test_audit_log_revoke_records_reason() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let reason = Some(String::from_str(&env, "fraud detected"));
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    client.revoke_attestation(&issuer, &id, &reason);
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.get(1).unwrap().details, reason);
+}
+
+#[test]
+fn test_audit_log_renew_appends_entry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    let new_exp = env.ledger().timestamp() + 86_400 * 30;
+    client.renew_attestation(&issuer, &id, &Some(new_exp));
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.len(), 2);
+    assert_eq!(log.get(1).unwrap().action, crate::types::AuditAction::Renewed);
+}
+
+#[test]
+fn test_audit_log_update_expiration_appends_entry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    let new_exp = env.ledger().timestamp() + 86_400 * 60;
+    client.update_expiration(&issuer, &id, &Some(new_exp));
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.len(), 2);
+    assert_eq!(log.get(1).unwrap().action, crate::types::AuditAction::Updated);
+}
+
+#[test]
+fn test_audit_log_is_append_only_across_multiple_actions() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    let new_exp = env.ledger().timestamp() + 86_400 * 30;
+    client.renew_attestation(&issuer, &id, &Some(new_exp));
+    client.revoke_attestation(&issuer, &id, &None);
+    let log = client.get_audit_log(&id);
+
+    assert_eq!(log.len(), 3);
+    assert_eq!(log.get(0).unwrap().action, crate::types::AuditAction::Created);
+    assert_eq!(log.get(1).unwrap().action, crate::types::AuditAction::Renewed);
+    assert_eq!(log.get(2).unwrap().action, crate::types::AuditAction::Revoked);
+}
+
+#[test]
+fn test_audit_log_empty_for_nonexistent_attestation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, client) = setup(&env);
+    let fake_id = String::from_str(&env, "nonexistent");
+    let log = client.get_audit_log(&fake_id);
+    assert_eq!(log.len(), 0);
+}
+
+#[test]
+fn test_audit_log_batch_revoke_appends_entries() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject1 = Address::generate(&env);
+    let subject2 = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id1 = client.create_attestation(&issuer, &subject1, &claim_type, &None, &None, &None);
+    let id2 = client.create_attestation(&issuer, &subject2, &claim_type, &None, &None, &None);
+
+    let mut ids = soroban_sdk::Vec::new(&env);
+    ids.push_back(id1.clone());
+    ids.push_back(id2.clone());
+    client.revoke_attestations_batch(&issuer, &ids, &None);
+
+    assert_eq!(client.get_audit_log(&id1).len(), 2);
+    assert_eq!(client.get_audit_log(&id2).len(), 2);
+    assert_eq!(client.get_audit_log(&id1).get(1).unwrap().action, crate::types::AuditAction::Revoked);
+}

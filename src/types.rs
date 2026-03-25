@@ -127,6 +127,26 @@ pub enum AttestationStatus {
     Pending,
 }
 
+/// The action recorded in an audit log entry.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AuditAction {
+    Created,
+    Revoked,
+    Renewed,
+    Updated,
+}
+
+/// A single immutable entry in an attestation's audit log.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditEntry {
+    pub action: AuditAction,
+    pub actor: Address,
+    pub timestamp: u64,
+    pub details: Option<String>,
+}
+
 /// A social-proof endorsement of an existing attestation by a registered issuer.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -28,7 +28,7 @@
 //! - `FeeConfig` — global attestation fee settings.
 //! - `GlobalStats` — running counters for total attestations, revocations, and issuers.
 
-use crate::types::{Attestation, ClaimTypeInfo, Endorsement, Error, ExpirationHook, FeeConfig, GlobalStats, IssuerMetadata, IssuerStats, IssuerTier, MultiSigProposal, TtlConfig};
+use crate::types::{Attestation, AuditEntry, ClaimTypeInfo, Endorsement, Error, ExpirationHook, FeeConfig, GlobalStats, IssuerMetadata, IssuerStats, IssuerTier, MultiSigProposal, TtlConfig};
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 /// Keys used to address data in contract storage.
@@ -70,6 +70,8 @@ pub enum StorageKey {
     IssuerStats(Address),
     /// Expiration notification hook for a subject address.
     ExpirationHook(Address),
+    /// Append-only audit log for an attestation, keyed by attestation ID.
+    AuditLog(String),
 }
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -481,6 +483,24 @@ impl Storage {
         let key = StorageKey::ExpirationHook(subject.clone());
         let ttl = get_ttl_lifetime(env);
         env.storage().persistent().set(&key, hook);
+        env.storage().persistent().extend_ttl(&key, ttl, ttl);
+    }
+
+    /// Return the audit log for `attestation_id`, or an empty [`Vec`] if none exist.
+    pub fn get_audit_log(env: &Env, attestation_id: &String) -> Vec<AuditEntry> {
+        env.storage()
+            .persistent()
+            .get(&StorageKey::AuditLog(attestation_id.clone()))
+            .unwrap_or(Vec::new(env))
+    }
+
+    /// Append `entry` to the audit log for `attestation_id` (append-only).
+    pub fn append_audit_entry(env: &Env, attestation_id: &String, entry: &AuditEntry) {
+        let key = StorageKey::AuditLog(attestation_id.clone());
+        let ttl = get_ttl_lifetime(env);
+        let mut log = Self::get_audit_log(env, attestation_id);
+        log.push_back(entry.clone());
+        env.storage().persistent().set(&key, &log);
         env.storage().persistent().extend_ttl(&key, ttl, ttl);
     }
 }
