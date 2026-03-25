@@ -1017,6 +1017,56 @@ impl TrustLinkContract {
         Storage::get_template_registry(&env, &issuer)
     }
 
+    pub fn get_expiring_attestations(
+        env: Env,
+        subject: Address,
+        within_seconds: u64,
+    ) -> Vec<String> {
+        let current_time = env.ledger().timestamp();
+        let upper_bound = current_time.saturating_add(within_seconds);
+        let ids = Storage::get_subject_attestations(&env, &subject);
+        let mut result = Vec::new(&env);
+
+        for id in ids.iter() {
+            if let Ok(attestation) = Storage::get_attestation(&env, &id) {
+                if !attestation.revoked {
+                    if let Some(exp) = attestation.expiration {
+                        if exp > current_time && exp <= upper_bound {
+                            result.push_back(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn get_issuer_expiring_attestations(
+        env: Env,
+        issuer: Address,
+        within_seconds: u64,
+    ) -> Vec<String> {
+        let current_time = env.ledger().timestamp();
+        let upper_bound = current_time.saturating_add(within_seconds);
+        let ids = Storage::get_issuer_attestations(&env, &issuer);
+        let mut result = Vec::new(&env);
+
+        for id in ids.iter() {
+            if let Ok(attestation) = Storage::get_attestation(&env, &id) {
+                if !attestation.revoked {
+                    if let Some(exp) = attestation.expiration {
+                        if exp > current_time && exp <= upper_bound {
+                            result.push_back(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     pub fn get_version(env: Env) -> Result<String, Error> {        Storage::get_version(&env).ok_or(Error::NotInitialized)
     }
 

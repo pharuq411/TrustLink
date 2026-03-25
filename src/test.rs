@@ -1372,3 +1372,461 @@ fn test_create_attestation_from_template_emits_attestation_created_event() {
     }
     assert!(found, "attestation_created event not found");
 }
+
+// ── Expiration Warning Query tests (get_expiring_attestations) ───────────────
+
+#[test]
+fn test_get_expiring_attestations_no_attestations() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, _, client) = setup(&env);
+    let subject = Address::generate(&env);
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000_000);
+
+    let result = client.get_expiring_attestations(&subject, &3600u64);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_all_outside_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration is well beyond the window
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within + 1_000),
+        &None,
+        &None,
+    );
+
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_mix() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    // in-window attestation
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let id_in = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+
+    // out-of-window attestation (different timestamp to avoid duplicate)
+    env.ledger().with_mut(|li| li.timestamp = base + 1);
+    let _id_out = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "AML"),
+        &Some(base + within + 1_000),
+        &None,
+        &None,
+    );
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result.get(0).unwrap(), id_in);
+}
+
+#[test]
+fn test_get_expiring_attestations_excludes_no_expiration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &None,
+        &None,
+        &None,
+    );
+
+    let result = client.get_expiring_attestations(&subject, &3_600u64);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_excludes_revoked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let id = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+    client.revoke_attestation(&issuer, &id);
+
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_boundary_inclusive_upper() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration == current_time + within_seconds → must be included
+    let id = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result.get(0).unwrap(), id);
+}
+
+#[test]
+fn test_get_expiring_attestations_boundary_exclusive_upper() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration == current_time + within_seconds + 1 → must be excluded
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within + 1),
+        &None,
+        &None,
+    );
+
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_boundary_already_expired() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    // Create attestation in the past so it is already expired at query time
+    env.ledger().with_mut(|li| li.timestamp = base - 1);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base),
+        &None,
+        &None,
+    );
+
+    // Advance ledger so expiration == current_time (already expired)
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let result = client.get_expiring_attestations(&subject, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_expiring_attestations_zero_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + 1),
+        &None,
+        &None,
+    );
+
+    // within_seconds = 0 → no attestation can satisfy current_time < exp <= current_time
+    let result = client.get_expiring_attestations(&subject, &0u64);
+    assert_eq!(result.len(), 0);
+}
+
+// ── Expiration Warning Query tests (get_issuer_expiring_attestations) ────────
+
+#[test]
+fn test_get_issuer_expiring_attestations_no_attestations() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000_000);
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &3600u64);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_all_outside_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration is well beyond the window
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within + 1_000),
+        &None,
+        &None,
+    );
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_mix() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject_a = Address::generate(&env);
+    let subject_b = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    // in-window attestation for subject_a
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let id_in = client.create_attestation(
+        &issuer,
+        &subject_a,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+
+    // out-of-window attestation for subject_b (different timestamp to avoid duplicate)
+    env.ledger().with_mut(|li| li.timestamp = base + 1);
+    let _id_out = client.create_attestation(
+        &issuer,
+        &subject_b,
+        &String::from_str(&env, "AML"),
+        &Some(base + within + 1_000),
+        &None,
+        &None,
+    );
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result.get(0).unwrap(), id_in);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_excludes_no_expiration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &None,
+        &None,
+        &None,
+    );
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &3_600u64);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_excludes_revoked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let id = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+    client.revoke_attestation(&issuer, &id);
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_boundary_inclusive_upper() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration == current_time + within_seconds → must be included
+    let id = client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within),
+        &None,
+        &None,
+    );
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result.get(0).unwrap(), id);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_boundary_exclusive_upper() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    // expiration == current_time + within_seconds + 1 → must be excluded
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + within + 1),
+        &None,
+        &None,
+    );
+
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_boundary_already_expired() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+    let within = 3_600u64;
+
+    // Create attestation in the past so it is already expired at query time
+    env.ledger().with_mut(|li| li.timestamp = base - 1);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base),
+        &None,
+        &None,
+    );
+
+    // Advance ledger so expiration == current_time (already expired)
+    env.ledger().with_mut(|li| li.timestamp = base);
+    let result = client.get_issuer_expiring_attestations(&issuer, &within);
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_get_issuer_expiring_attestations_zero_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let base = 1_000_000u64;
+
+    env.ledger().with_mut(|li| li.timestamp = base);
+    client.create_attestation(
+        &issuer,
+        &subject,
+        &String::from_str(&env, "KYC"),
+        &Some(base + 1),
+        &None,
+        &None,
+    );
+
+    // within_seconds = 0 → no attestation can satisfy current_time < exp <= current_time
+    let result = client.get_issuer_expiring_attestations(&issuer, &0u64);
+    assert_eq!(result.len(), 0);
+}
