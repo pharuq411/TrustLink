@@ -620,6 +620,19 @@ For a step-by-step walkthrough covering Rust cross-contract patterns, JavaScript
 
 For a full reference of every on-chain storage key, the data each holds, TTL policy, serialization format, and a practical RPC read example for indexer developers, see [docs/storage-layout.md](docs/storage-layout.md).
 
+## Architecture Decision Records
+
+Key design choices are documented as ADRs in [docs/adr/](docs/adr/):
+
+| ADR | Decision |
+|-----|----------|
+| [ADR-001](docs/adr/ADR-001-deterministic-ids.md) | Deterministic IDs instead of sequential counters |
+| [ADR-002](docs/adr/ADR-002-persistent-storage.md) | Persistent storage instead of temporary storage |
+| [ADR-003](docs/adr/ADR-003-immutable-history.md) | Immutable attestation history (no delete) |
+| [ADR-004](docs/adr/ADR-004-dual-indexes.md) | Separate issuer and subject indexes |
+
+A blank [template](docs/adr/ADR-000-template.md) is available for new decisions.
+
 ## License
 
 MIT
