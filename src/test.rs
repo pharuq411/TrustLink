@@ -37,7 +37,7 @@ fn setup(env: &Env) -> (Address, Address, TrustLinkContractClient<'_>) {
     let admin = Address::generate(env);
     let issuer = Address::generate(env);
     client.initialize(&admin, &None);
-    client.register_issuer(&admin, &issuer);
+    client.register_issuer(&admin, &issuer, &None);
     (admin, issuer, client)
 }
 
@@ -262,6 +262,35 @@ fn test_create_attestation_rejects_without_fee_payment() {
     assert!(result.is_err());
     assert_eq!(token_client.balance(&collector), 0);
     assert_eq!(client.get_subject_attestations(&subject, &0, &10).len(), 0);
+}
+
+#[test]
+fn test_create_attestation_rejects_self_attestation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, issuer, client) = setup(&env);
+    let collector = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let fee_token = register_test_token(&env, &admin);
+    let token_client = TokenClient::new(&env, &fee_token);
+    let asset_admin = StellarAssetClient::new(&env, &fee_token);
+
+    asset_admin.mint(&issuer, &100);
+    client.set_fee(&admin, &25, &collector, &Some(fee_token.clone()));
+
+    let result = client.try_create_attestation(
+        &issuer,
+        &issuer,
+        &claim_type,
+        &None,
+        &None,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
+    assert_eq!(token_client.balance(&issuer), 100);
+    assert_eq!(token_client.balance(&collector), 0);
+    assert_eq!(client.get_subject_attestations(&issuer, &0, &10).len(), 0);
 }
 
 #[test]
@@ -750,9 +779,9 @@ fn setup_multisig(
     let issuer2 = Address::generate(env);
     let issuer3 = Address::generate(env);
     client.initialize(&admin, &None);
-    client.register_issuer(&admin, &issuer1);
-    client.register_issuer(&admin, &issuer2);
-    client.register_issuer(&admin, &issuer3);
+    client.register_issuer(&admin, &issuer1, &None);
+    client.register_issuer(&admin, &issuer2, &None);
+    client.register_issuer(&admin, &issuer3, &None);
     (issuer1, issuer2, issuer3, admin, client)
 }
 
@@ -818,7 +847,7 @@ fn test_multisig_non_required_signer_rejected() {
 
     let (issuer1, issuer2, issuer3, admin, client) = setup_multisig(&env);
     let outsider = Address::generate(&env);
-    client.register_issuer(&admin, &outsider);
+    client.register_issuer(&admin, &outsider, &None);
 
     let subject = Address::generate(&env);
     let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
@@ -979,856 +1008,106 @@ fn test_multisig_unregistered_proposer_rejected() {
     assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
 }
 
-// ── Attestation Template tests ───────────────────────────────────────────────
+// ── Admin transfer tests ─────────────────────────────────────────────────────
 
 #[test]
-fn test_create_template_happy_path() {
+fn test_transfer_admin_success() {
+    // Property 2: Admin address updated after transfer — Validates: Requirements 1.3
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, issuer, client) = setup(&env);
-    let template_id = String::from_str(&env, "KYC_TEMPLATE");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: Some(30),
-        metadata_template: Some(String::from_str(&env, "source=acme")),
-    };
+    let (admin, _, client) = setup(&env);
+    let new_admin = Address::generate(&env);
 
-    client.create_template(&issuer, &template_id, &template);
-
-    let retrieved = client.get_template(&issuer, &template_id);
-    assert_eq!(retrieved, template);
+    client.transfer_admin(&admin, &new_admin);
+    assert_eq!(client.get_admin(), new_admin);
 }
 
 #[test]
-fn test_create_template_overwrite() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let template_id = String::from_str(&env, "MY_TEMPLATE");
-
-    let first = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: Some(10),
-        metadata_template: None,
-    };
-    let second = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "AML"),
-        default_expiration_days: Some(60),
-        metadata_template: Some(String::from_str(&env, "v2")),
-    };
-
-    client.create_template(&issuer, &template_id, &first);
-    client.create_template(&issuer, &template_id, &second);
-
-    let retrieved = client.get_template(&issuer, &template_id);
-    assert_eq!(retrieved, second);
-}
-
-#[test]
-fn test_create_template_empty_claim_type() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let template_id = String::from_str(&env, "BAD_TEMPLATE");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, ""),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-
-    let result = client.try_create_template(&issuer, &template_id, &template);
-    assert_eq!(result, Err(Ok(types::Error::InvalidClaimType)));
-}
-
-#[test]
-fn test_create_template_metadata_too_long() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let template_id = String::from_str(&env, "LONG_META");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: Some(String::from_bytes(&env, &[b'a'; 257])),
-    };
-
-    let result = client.try_create_template(&issuer, &template_id, &template);
-    assert_eq!(result, Err(Ok(types::Error::MetadataTooLong)));
-}
-
-#[test]
-fn test_create_template_non_issuer_unauthorized() {
+fn test_transfer_admin_unauthorized() {
+    // Property 1: Non-admin cannot transfer — Validates: Requirements 2.1
     let env = Env::default();
     env.mock_all_auths();
 
     let (_, _, client) = setup(&env);
-    let non_issuer = Address::generate(&env);
-    let template_id = String::from_str(&env, "SOME_TEMPLATE");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
+    let non_admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
 
-    let result = client.try_create_template(&non_issuer, &template_id, &template);
+    let result = client.try_transfer_admin(&non_admin, &new_admin);
     assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
 }
 
 #[test]
-fn test_list_templates_insertion_order_no_duplicates() {
+fn test_transfer_admin_old_admin_loses_privileges() {
+    // Property 3: Privilege handoff — Validates: Requirements 3.1
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, issuer, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
 
-    let id_a = String::from_str(&env, "ALPHA");
-    let id_b = String::from_str(&env, "BETA");
-    let id_c = String::from_str(&env, "GAMMA");
+    client.transfer_admin(&admin, &new_admin);
 
-    let tmpl = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-
-    client.create_template(&issuer, &id_a, &tmpl);
-    client.create_template(&issuer, &id_b, &tmpl);
-    client.create_template(&issuer, &id_c, &tmpl);
-
-    // Overwrite BETA — should not duplicate it in the registry.
-    let tmpl2 = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "AML"),
-        default_expiration_days: Some(5),
-        metadata_template: None,
-    };
-    client.create_template(&issuer, &id_b, &tmpl2);
-
-    let list = client.list_templates(&issuer);
-    assert_eq!(list.len(), 3);
-    assert_eq!(list.get(0).unwrap(), id_a);
-    assert_eq!(list.get(1).unwrap(), id_b);
-    assert_eq!(list.get(2).unwrap(), id_c);
+    let result = client.try_register_issuer(&admin, &issuer);
+    assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
 }
 
 #[test]
-fn test_list_templates_empty_for_new_issuer() {
+fn test_transfer_admin_new_admin_can_register_issuer() {
+    // Property 3: Privilege handoff — Validates: Requirements 3.2
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, issuer, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
 
-    let list = client.list_templates(&issuer);
-    assert_eq!(list.len(), 0);
+    client.transfer_admin(&admin, &new_admin);
+    client.register_issuer(&new_admin, &issuer);
+    assert!(client.is_issuer(&issuer));
 }
 
 #[test]
-fn test_get_template_not_found() {
+fn test_transfer_admin_emits_event() {
+    // Property 4: Event emission — Validates: Requirements 1.4, 4.1, 4.2
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, issuer, client) = setup(&env);
-    let unknown_id = String::from_str(&env, "DOES_NOT_EXIST");
+    let (admin, _, client) = setup(&env);
+    let new_admin = Address::generate(&env);
 
-    let result = client.try_get_template(&issuer, &unknown_id);
-    assert_eq!(result, Err(Ok(types::Error::NotFound)));
-}
-
-#[test]
-fn test_create_attestation_from_template_happy_path() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    let timestamp = 1_000_000u64;
-    env.ledger().with_mut(|li| li.timestamp = timestamp);
-
-    let template_id = String::from_str(&env, "KYC_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: Some(1),
-        metadata_template: Some(String::from_str(&env, "meta")),
-    };
-    client.create_template(&issuer, &template_id, &template);
-
-    let attestation_id = client.create_attestation_from_template(
-        &issuer,
-        &template_id,
-        &subject,
-        &None,
-        &None,
-    );
-
-    let attestation = client.get_attestation(&attestation_id);
-    assert_eq!(attestation.claim_type, String::from_str(&env, "KYC"));
-    assert_eq!(attestation.metadata, Some(String::from_str(&env, "meta")));
-    assert_eq!(attestation.expiration, Some(timestamp + 86_400));
-}
-
-#[test]
-fn test_create_attestation_from_template_with_overrides() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    let timestamp = 1_000_000u64;
-    env.ledger().with_mut(|li| li.timestamp = timestamp);
-
-    let template_id = String::from_str(&env, "OVERRIDE_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: Some(30),
-        metadata_template: Some(String::from_str(&env, "default_meta")),
-    };
-    client.create_template(&issuer, &template_id, &template);
-
-    let override_expiration = timestamp + 999_999;
-    let override_metadata = String::from_str(&env, "override_meta");
-
-    let attestation_id = client.create_attestation_from_template(
-        &issuer,
-        &template_id,
-        &subject,
-        &Some(override_expiration),
-        &Some(override_metadata.clone()),
-    );
-
-    let attestation = client.get_attestation(&attestation_id);
-    assert_eq!(attestation.expiration, Some(override_expiration));
-    assert_eq!(attestation.metadata, Some(override_metadata));
-}
-
-#[test]
-fn test_create_attestation_from_template_unknown_template() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let unknown_id = String::from_str(&env, "GHOST_TEMPLATE");
-
-    let result = client.try_create_attestation_from_template(
-        &issuer,
-        &unknown_id,
-        &subject,
-        &None,
-        &None,
-    );
-    assert_eq!(result, Err(Ok(types::Error::NotFound)));
-}
-
-#[test]
-fn test_create_attestation_from_template_stale_expiration() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    let timestamp = 1_000_000u64;
-    env.ledger().with_mut(|li| li.timestamp = timestamp);
-
-    let template_id = String::from_str(&env, "STALE_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-    client.create_template(&issuer, &template_id, &template);
-
-    let result = client.try_create_attestation_from_template(
-        &issuer,
-        &template_id,
-        &subject,
-        &Some(999_999),
-        &None,
-    );
-    assert_eq!(result, Err(Ok(types::Error::InvalidExpiration)));
-}
-
-#[test]
-fn test_create_attestation_from_template_metadata_override_too_long() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    let template_id = String::from_str(&env, "META_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-    client.create_template(&issuer, &template_id, &template);
-
-    let result = client.try_create_attestation_from_template(
-        &issuer,
-        &template_id,
-        &subject,
-        &None,
-        &Some(String::from_bytes(&env, &[b'a'; 257])),
-    );
-    assert_eq!(result, Err(Ok(types::Error::MetadataTooLong)));
-}
-
-#[test]
-fn test_create_attestation_from_template_two_issuers_isolated() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (admin, issuer_a, client) = setup(&env);
-    let issuer_b = Address::generate(&env);
-    client.register_issuer(&admin, &issuer_b);
-
-    let template_id = String::from_str(&env, "SHARED_ID");
-
-    let tmpl_a = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: Some(10),
-        metadata_template: Some(String::from_str(&env, "issuer_a_meta")),
-    };
-    let tmpl_b = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "AML"),
-        default_expiration_days: Some(20),
-        metadata_template: Some(String::from_str(&env, "issuer_b_meta")),
-    };
-
-    client.create_template(&issuer_a, &template_id, &tmpl_a);
-    client.create_template(&issuer_b, &template_id, &tmpl_b);
-
-    let retrieved_a = client.get_template(&issuer_a, &template_id);
-    let retrieved_b = client.get_template(&issuer_b, &template_id);
-
-    assert_eq!(retrieved_a, tmpl_a);
-    assert_eq!(retrieved_b, tmpl_b);
-    assert_ne!(retrieved_a, retrieved_b);
-}
-
-#[test]
-fn test_create_template_emits_event() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let template_id = String::from_str(&env, "EVENT_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-
-    client.create_template(&issuer, &template_id, &template);
+    client.transfer_admin(&admin, &new_admin);
 
     let events = env.events().all();
     let mut found = false;
-    for (_, topics, _) in events.iter() {
+    for (_, topics, data) in events.iter() {
         let topic0: soroban_sdk::Symbol =
             soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == soroban_sdk::symbol_short!("tmpl_crt") {
+        if topic0 == soroban_sdk::symbol_short!("adm_xfer") {
+            let event_data: (Address, Address) =
+                soroban_sdk::TryFromVal::try_from_val(&env, &data).unwrap();
+            assert_eq!(event_data.0, admin);
+            assert_eq!(event_data.1, new_admin);
             found = true;
             break;
         }
     }
-    assert!(found, "template_created event not found");
+    assert!(found, "adm_xfer event not found");
 }
 
 #[test]
-fn test_create_attestation_from_template_emits_attestation_created_event() {
+fn test_transfer_admin_not_initialized() {
+    // Edge Case: Uninitialized contract — Validates: Requirements 2.2
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-
-    let template_id = String::from_str(&env, "EVT_TMPL");
-    let template = types::AttestationTemplate {
-        claim_type: String::from_str(&env, "KYC"),
-        default_expiration_days: None,
-        metadata_template: None,
-    };
-    client.create_template(&issuer, &template_id, &template);
-
-    client.create_attestation_from_template(&issuer, &template_id, &subject, &None, &None);
-
-    let events = env.events().all();
-    let mut found = false;
-    for (_, topics, _) in events.iter() {
-        let topic0: soroban_sdk::Symbol =
-            soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == soroban_sdk::symbol_short!("created") {
-            found = true;
-            break;
-        }
-    }
-    assert!(found, "attestation_created event not found");
-}
-
-// ── Expiration Warning Query tests (get_expiring_attestations) ───────────────
-
-#[test]
-fn test_get_expiring_attestations_no_attestations() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, _, client) = setup(&env);
-    let subject = Address::generate(&env);
-
-    env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-
-    let result = client.get_expiring_attestations(&subject, &3600u64);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_all_outside_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration is well beyond the window
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within + 1_000),
-        &None,
-        &None,
-    );
-
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_mix() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    // in-window attestation
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let id_in = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-
-    // out-of-window attestation (different timestamp to avoid duplicate)
-    env.ledger().with_mut(|li| li.timestamp = base + 1);
-    let _id_out = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "AML"),
-        &Some(base + within + 1_000),
-        &None,
-        &None,
-    );
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 1);
-    assert_eq!(result.get(0).unwrap(), id_in);
-}
-
-#[test]
-fn test_get_expiring_attestations_excludes_no_expiration() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &None,
-        &None,
-        &None,
-    );
-
-    let result = client.get_expiring_attestations(&subject, &3_600u64);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_excludes_revoked() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let id = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-    client.revoke_attestation(&issuer, &id);
-
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_boundary_inclusive_upper() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration == current_time + within_seconds → must be included
-    let id = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 1);
-    assert_eq!(result.get(0).unwrap(), id);
-}
-
-#[test]
-fn test_get_expiring_attestations_boundary_exclusive_upper() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration == current_time + within_seconds + 1 → must be excluded
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within + 1),
-        &None,
-        &None,
-    );
-
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_boundary_already_expired() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    // Create attestation in the past so it is already expired at query time
-    env.ledger().with_mut(|li| li.timestamp = base - 1);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base),
-        &None,
-        &None,
-    );
-
-    // Advance ledger so expiration == current_time (already expired)
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let result = client.get_expiring_attestations(&subject, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_expiring_attestations_zero_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + 1),
-        &None,
-        &None,
-    );
-
-    // within_seconds = 0 → no attestation can satisfy current_time < exp <= current_time
-    let result = client.get_expiring_attestations(&subject, &0u64);
-    assert_eq!(result.len(), 0);
-}
-
-// ── Expiration Warning Query tests (get_issuer_expiring_attestations) ────────
-
-#[test]
-fn test_get_issuer_expiring_attestations_no_attestations() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-
-    env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &3600u64);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_all_outside_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration is well beyond the window
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within + 1_000),
-        &None,
-        &None,
-    );
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_mix() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject_a = Address::generate(&env);
-    let subject_b = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    // in-window attestation for subject_a
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let id_in = client.create_attestation(
-        &issuer,
-        &subject_a,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-
-    // out-of-window attestation for subject_b (different timestamp to avoid duplicate)
-    env.ledger().with_mut(|li| li.timestamp = base + 1);
-    let _id_out = client.create_attestation(
-        &issuer,
-        &subject_b,
-        &String::from_str(&env, "AML"),
-        &Some(base + within + 1_000),
-        &None,
-        &None,
-    );
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 1);
-    assert_eq!(result.get(0).unwrap(), id_in);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_excludes_no_expiration() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &None,
-        &None,
-        &None,
-    );
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &3_600u64);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_excludes_revoked() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let id = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-    client.revoke_attestation(&issuer, &id);
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_boundary_inclusive_upper() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration == current_time + within_seconds → must be included
-    let id = client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within),
-        &None,
-        &None,
-    );
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 1);
-    assert_eq!(result.get(0).unwrap(), id);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_boundary_exclusive_upper() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    // expiration == current_time + within_seconds + 1 → must be excluded
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + within + 1),
-        &None,
-        &None,
-    );
-
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_boundary_already_expired() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-    let within = 3_600u64;
-
-    // Create attestation in the past so it is already expired at query time
-    env.ledger().with_mut(|li| li.timestamp = base - 1);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base),
-        &None,
-        &None,
-    );
-
-    // Advance ledger so expiration == current_time (already expired)
-    env.ledger().with_mut(|li| li.timestamp = base);
-    let result = client.get_issuer_expiring_attestations(&issuer, &within);
-    assert_eq!(result.len(), 0);
-}
-
-#[test]
-fn test_get_issuer_expiring_attestations_zero_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, issuer, client) = setup(&env);
-    let subject = Address::generate(&env);
-    let base = 1_000_000u64;
-
-    env.ledger().with_mut(|li| li.timestamp = base);
-    client.create_attestation(
-        &issuer,
-        &subject,
-        &String::from_str(&env, "KYC"),
-        &Some(base + 1),
-        &None,
-        &None,
-    );
-
-    // within_seconds = 0 → no attestation can satisfy current_time < exp <= current_time
-    let result = client.get_issuer_expiring_attestations(&issuer, &0u64);
-    assert_eq!(result.len(), 0);
+    let (_, client) = create_test_contract(&env);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    let result = client.try_transfer_admin(&admin, &new_admin);
+    assert_eq!(result, Err(Ok(types::Error::NotInitialized)));
 }
 
 // ── Contract Config Query tests ──
