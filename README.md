@@ -1,5 +1,7 @@
 # TrustLink - On-Chain Attestation & Verification System
 
+[![CI](https://github.com/afurious/TrustLink/actions/workflows/ci.yml/badge.svg)](https://github.com/afurious/TrustLink/actions/workflows/ci.yml)
+
 TrustLink is a Soroban smart contract that provides a reusable trust layer for the Stellar blockchain. It enables trusted issuers, bridge contracts, and administrators to create, import, manage, and revoke attestations about wallet addresses, allowing other contracts and applications to verify claims before executing financial operations.
 
 ## Overview

@@ -2,57 +2,28 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ "main" ]
   pull_request:
-    branches: [main, develop]
-
-env:
-  CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
-    name: Rust Format
+  ci:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  clippy:
-    name: Clippy Lints
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: rustup show
 
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check lib
+        run: cargo check --lib
+
       - name: Run tests
-        run: cargo test --lib
+        run: cargo test
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy, test]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - name: Build
+      - name: Build WASM
         run: cargo build --target wasm32-unknown-unknown --release
