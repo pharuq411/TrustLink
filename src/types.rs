@@ -116,6 +116,9 @@ pub struct Attestation {
     pub source_tx: Option<String>,
     pub tags: Option<Vec<String>>,
     pub revocation_reason: Option<String>,
+    /// True when the subject has requested GDPR deletion of this attestation.
+    /// Deleted attestations are excluded from all query results.
+    pub deleted: bool,
 }
 
 #[contracttype]

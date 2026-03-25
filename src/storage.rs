@@ -265,6 +265,21 @@ impl Storage {
         env.storage().persistent().extend_ttl(&key, ttl, ttl);
     }
 
+    /// Remove `attestation_id` from `subject`'s attestation index.
+    pub fn remove_subject_attestation(env: &Env, subject: &Address, attestation_id: &String) {
+        let key = StorageKey::SubjectAttestations(subject.clone());
+        let ttl = get_ttl_lifetime(env);
+        let existing = Self::get_subject_attestations(env, subject);
+        let mut updated = Vec::new(env);
+        for id in existing.iter() {
+            if &id != attestation_id {
+                updated.push_back(id);
+            }
+        }
+        env.storage().persistent().set(&key, &updated);
+        env.storage().persistent().extend_ttl(&key, ttl, ttl);
+    }
+
     /// Return the ordered list of attestation IDs created by `issuer`, or an
     /// empty [`Vec`] if none exist.
     ///

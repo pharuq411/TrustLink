@@ -1473,3 +1473,106 @@ fn test_audit_log_batch_revoke_appends_entries() {
     assert_eq!(client.get_audit_log(&id2).len(), 2);
     assert_eq!(client.get_audit_log(&id1).get(1).unwrap().action, crate::types::AuditAction::Revoked);
 }
+
+#[test]
+fn test_request_deletion_marks_attestation_deleted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    client.request_deletion(&subject, &id);
+
+    let attestation = client.get_attestation(&id);
+    assert!(attestation.deleted);
+}
+
+#[test]
+fn test_request_deletion_removes_from_subject_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    client.request_deletion(&subject, &id);
+
+    let ids = client.get_subject_attestations(&subject, &0, &10);
+    assert_eq!(ids.len(), 0);
+}
+
+#[test]
+fn test_request_deletion_hides_from_has_valid_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    assert!(client.has_valid_claim(&subject, &claim_type));
+
+    client.request_deletion(&subject, &id);
+    assert!(!client.has_valid_claim(&subject, &claim_type));
+}
+
+#[test]
+fn test_request_deletion_non_subject_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let other = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    let result = client.try_request_deletion(&other, &id);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_request_deletion_nonexistent_attestation_returns_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let fake_id = String::from_str(&env, "nonexistent_id");
+
+    let result = client.try_request_deletion(&subject, &fake_id);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_request_deletion_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+    let timestamp = 1_700_000_000u64;
+    env.ledger().set_timestamp(timestamp);
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    client.request_deletion(&subject, &id);
+
+    let events = env.events().all();
+    let mut found = false;
+    for (_, topic, data) in events {
+        let topic0: soroban_sdk::Symbol =
+            soroban_sdk::TryFromVal::try_from_val(&env, &topic.get(0).unwrap()).unwrap();
+        if topic0 == soroban_sdk::symbol_short!("del_req") {
+            let topic1: Address =
+                soroban_sdk::TryFromVal::try_from_val(&env, &topic.get(1).unwrap()).unwrap();
+            let event_data: (String, u64) =
+                soroban_sdk::TryFromVal::try_from_val(&env, &data).unwrap();
+            assert_eq!(topic1, subject);
+            assert_eq!(event_data.0, id);
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "deletion_requested event not found");
+}
