@@ -151,6 +151,10 @@ let page1 = contract.list_claim_types(&0, &10);
 
 ### Create Attestations
 
+Issuers cannot create an attestation where they are also the subject (`issuer ==
+subject`); that would allow trivial self-certification. The contract returns
+`Unauthorized` in that case.
+
 If fees are enabled, the issuer must hold enough of the configured token for
 the transfer to succeed.
 

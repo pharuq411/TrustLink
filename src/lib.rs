@@ -308,6 +308,10 @@ impl TrustLinkContract {
         Ok(())
     }
 
+    /// Creates a native attestation from a registered issuer about a subject.
+    ///
+    /// `issuer` and `subject` must be different addresses; self-attestation is
+    /// rejected with [`Error::Unauthorized`] to prevent self-certification.
     pub fn create_attestation(
         env: Env,
         issuer: Address,
@@ -322,6 +326,10 @@ impl TrustLinkContract {
         validate_metadata(&metadata)?;
         validate_tags(&tags)?;
         validate_native_expiration(&env, expiration)?;
+
+        if issuer == subject {
+            return Err(Error::Unauthorized);
+        }
 
         let timestamp = env.ledger().timestamp();
         let attestation_id =
