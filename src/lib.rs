@@ -8,7 +8,7 @@ mod validation;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Bytes, Env, String, Vec};
 
 use crate::events::Events;
 use crate::storage::Storage;
@@ -17,6 +17,22 @@ use crate::types::{
     IssuerMetadata, IssuerStats, MultiSigProposal, TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
 };
 use crate::validation::Validation;
+
+// Seconds in one day.
+const SECS_PER_DAY: u64 = 86_400;
+
+/// Minimal interface expected on a registered callback contract.
+/// The callback receives the subject, attestation ID, and expiration timestamp.
+mod callback {
+    use soroban_sdk::{contractclient, Address, Env, String};
+
+    #[contractclient(name = "ExpirationCallbackClient")]
+    pub trait ExpirationCallback {
+        fn notify_expiring(env: Env, subject: Address, attestation_id: String, expiration: u64);
+    }
+}
+
+use callback::ExpirationCallbackClient;
 
 fn validate_metadata(metadata: &Option<String>) -> Result<(), Error> {
     if let Some(value) = metadata {
@@ -138,6 +154,32 @@ fn paginate_strings(env: &Env, values: Vec<String>, start: u32, limit: u32) -> V
     result
 }
 
+/// Fire the expiration hook for `subject` if one is registered and the
+/// attestation is inside the notification window. Failures are silently
+/// swallowed so the main flow is never interrupted.
+fn maybe_trigger_expiration_hook(
+    env: &Env,
+    subject: &Address,
+    attestation_id: &String,
+    expiration: u64,
+    current_time: u64,
+) {
+    let hook = match Storage::get_expiration_hook(env, subject) {
+        Some(h) => h,
+        None => return,
+    };
+
+    let notify_window = (hook.notify_days_before as u64) * SECS_PER_DAY;
+    let notify_from = expiration.saturating_sub(notify_window);
+
+    if current_time >= notify_from && current_time < expiration {
+        Events::expiration_hook_triggered(env, subject, attestation_id, expiration);
+        // Best-effort cross-contract call — ignore any panic/error.
+        let client = ExpirationCallbackClient::new(env, &hook.callback_contract);
+        let _ = client.try_notify_expiring(subject, attestation_id, &expiration);
+    }
+}
+
 #[contract]
 pub struct TrustLinkContract;
 
@@ -164,7 +206,7 @@ impl TrustLinkContract {
         Ok(())
     }
 
-    pub fn register_issuer(env: Env, admin: Address, issuer: Address) -> Result<(), Error> {
+    pub fn register_issuer(env: Env, admin: Address, issuer: Address, tier: Option<IssuerTier>) -> Result<(), Error> {
         admin.require_auth();
         Validation::require_admin(&env, &admin)?;
         let timestamp = env.ledger().timestamp();
@@ -180,6 +222,60 @@ impl TrustLinkContract {
         Storage::remove_issuer(&env, &issuer);
         Events::issuer_removed(&env, &issuer, &admin, env.ledger().timestamp());
         Ok(())
+    }
+
+    /// Update the trust tier of an already-registered issuer.
+    ///
+    /// # Errors
+    /// - [`Error::Unauthorized`] — `issuer` is not registered.
+    pub fn update_issuer_tier(
+        env: Env,
+        admin: Address,
+        issuer: Address,
+        tier: IssuerTier,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+        Validation::require_admin(&env, &admin)?;
+        Validation::require_issuer(&env, &issuer)?;
+        Storage::set_issuer_tier(&env, &issuer, &tier);
+        Events::issuer_tier_updated(&env, &issuer, &tier);
+        Ok(())
+    }
+
+    /// Return the trust tier of `issuer`, or `None` if not registered.
+    pub fn get_issuer_tier(env: Env, issuer: Address) -> Option<IssuerTier> {
+        Storage::get_issuer_tier(&env, &issuer)
+    }
+
+    /// Return `true` if `subject` holds a valid `claim_type` attestation issued
+    /// by an issuer whose tier is >= `min_tier`.
+    pub fn has_valid_claim_from_tier(
+        env: Env,
+        subject: Address,
+        claim_type: String,
+        min_tier: IssuerTier,
+    ) -> bool {
+        let attestation_ids = Storage::get_subject_attestations(&env, &subject);
+        let current_time = env.ledger().timestamp();
+        let min_rank = min_tier.rank();
+
+        for attestation_id in attestation_ids.iter() {
+            if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
+                if attestation.claim_type != claim_type {
+                    continue;
+                }
+                if attestation.get_status(current_time) != AttestationStatus::Valid {
+                    continue;
+                }
+                if let Some(tier) = Storage::get_issuer_tier(&env, &attestation.issuer) {
+                    if tier.rank() >= min_rank {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     pub fn register_bridge(
@@ -216,6 +312,10 @@ impl TrustLinkContract {
         Ok(())
     }
 
+    /// Creates a native attestation from a registered issuer about a subject.
+    ///
+    /// `issuer` and `subject` must be different addresses; self-attestation is
+    /// rejected with [`Error::Unauthorized`] to prevent self-certification.
     pub fn create_attestation(
         env: Env,
         issuer: Address,
@@ -230,6 +330,10 @@ impl TrustLinkContract {
         validate_metadata(&metadata)?;
         validate_tags(&tags)?;
         validate_native_expiration(&env, expiration)?;
+
+        if issuer == subject {
+            return Err(Error::Unauthorized);
+        }
 
         let timestamp = env.ledger().timestamp();
         let attestation_id =
@@ -525,7 +629,20 @@ impl TrustLinkContract {
             if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
                 if attestation.claim_type == claim_type {
                     match attestation.get_status(current_time) {
-                        AttestationStatus::Valid => return true,
+                        AttestationStatus::Valid => {
+                            // Fire expiration hook if the attestation has an
+                            // expiration and is inside the notification window.
+                            if let Some(exp) = attestation.expiration {
+                                maybe_trigger_expiration_hook(
+                                    &env,
+                                    &subject,
+                                    &attestation_id,
+                                    exp,
+                                    current_time,
+                                );
+                            }
+                            return true;
+                        }
                         AttestationStatus::Expired => {
                             Events::attestation_expired(&env, &attestation_id, &subject);
                         }
@@ -945,6 +1062,150 @@ impl TrustLinkContract {
     /// Retrieve a multi-sig proposal by ID.
     pub fn get_multisig_proposal(env: Env, proposal_id: String) -> Result<MultiSigProposal, Error> {
         Storage::get_multisig_proposal(&env, &proposal_id)
+    }
+
+    pub fn create_template(
+        env: Env,
+        issuer: Address,
+        template_id: String,
+        template: AttestationTemplate,
+    ) -> Result<(), Error> {
+        issuer.require_auth();
+        Validation::require_issuer(&env, &issuer)?;
+
+        if template.claim_type.len() == 0 {
+            return Err(Error::InvalidClaimType);
+        }
+
+        validate_metadata(&template.metadata_template)?;
+
+        Storage::set_template(&env, &issuer, &template_id, &template);
+        Storage::add_to_template_registry(&env, &issuer, &template_id);
+        Events::template_created(&env, &issuer, &template_id);
+        Ok(())
+    }
+
+    pub fn create_attestation_from_template(
+        env: Env,
+        issuer: Address,
+        template_id: String,
+        subject: Address,
+        expiration_override: Option<u64>,
+        metadata_override: Option<String>,
+    ) -> Result<String, Error> {
+        issuer.require_auth();
+        Validation::require_issuer(&env, &issuer)?;
+
+        let template = Storage::get_template(&env, &issuer, &template_id).ok_or(Error::NotFound)?;
+
+        validate_metadata(&metadata_override)?;
+        validate_native_expiration(&env, expiration_override)?;
+
+        let timestamp = env.ledger().timestamp();
+
+        let expiration = if let Some(ts) = expiration_override {
+            Some(ts)
+        } else if let Some(n) = template.default_expiration_days {
+            Some(timestamp + (n as u64 * 86_400))
+        } else {
+            None
+        };
+
+        let metadata = if metadata_override.is_some() {
+            metadata_override
+        } else {
+            template.metadata_template
+        };
+
+        let attestation_id =
+            Attestation::generate_id(&env, &issuer, &subject, &template.claim_type, timestamp);
+
+        if Storage::has_attestation(&env, &attestation_id) {
+            return Err(Error::DuplicateAttestation);
+        }
+
+        let attestation = Attestation {
+            id: attestation_id.clone(),
+            issuer,
+            subject,
+            claim_type: template.claim_type,
+            timestamp,
+            expiration,
+            revoked: false,
+            metadata,
+            valid_from: None,
+            imported: false,
+            bridged: false,
+            source_chain: None,
+            source_tx: None,
+            tags: None,
+        };
+
+        store_attestation(&env, &attestation);
+        Events::attestation_created(&env, &attestation);
+        Ok(attestation_id)
+    }
+
+    pub fn get_template(
+        env: Env,
+        issuer: Address,
+        template_id: String,
+    ) -> Result<AttestationTemplate, Error> {
+        Storage::get_template(&env, &issuer, &template_id).ok_or(Error::NotFound)
+    }
+
+    pub fn list_templates(env: Env, issuer: Address) -> Vec<String> {
+        Storage::get_template_registry(&env, &issuer)
+    }
+
+    pub fn get_expiring_attestations(
+        env: Env,
+        subject: Address,
+        within_seconds: u64,
+    ) -> Vec<String> {
+        let current_time = env.ledger().timestamp();
+        let upper_bound = current_time.saturating_add(within_seconds);
+        let ids = Storage::get_subject_attestations(&env, &subject);
+        let mut result = Vec::new(&env);
+
+        for id in ids.iter() {
+            if let Ok(attestation) = Storage::get_attestation(&env, &id) {
+                if !attestation.revoked {
+                    if let Some(exp) = attestation.expiration {
+                        if exp > current_time && exp <= upper_bound {
+                            result.push_back(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn get_issuer_expiring_attestations(
+        env: Env,
+        issuer: Address,
+        within_seconds: u64,
+    ) -> Vec<String> {
+        let current_time = env.ledger().timestamp();
+        let upper_bound = current_time.saturating_add(within_seconds);
+        let ids = Storage::get_issuer_attestations(&env, &issuer);
+        let mut result = Vec::new(&env);
+
+        for id in ids.iter() {
+            if let Ok(attestation) = Storage::get_attestation(&env, &id) {
+                if !attestation.revoked {
+                    if let Some(exp) = attestation.expiration {
+                        if exp > current_time && exp <= upper_bound {
+                            result.push_back(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     pub fn get_version(env: Env) -> Result<String, Error> {        Storage::get_version(&env).ok_or(Error::NotInitialized)
