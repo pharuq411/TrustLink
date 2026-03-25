@@ -1,4 +1,4 @@
-.PHONY: build test optimize clean install help
+.PHONY: build test optimize clean install help coverage
 
 help:
 	@echo "TrustLink Smart Contract - Makefile Commands"
@@ -6,6 +6,7 @@ help:
 	@echo "make build     - Build the contract in debug mode"
 	@echo "make test      - Run all unit tests"
 	@echo "make optimize  - Build optimized release version"
+	@echo "make coverage  - Generate code coverage report"
 	@echo "make clean     - Clean build artifacts"
 	@echo "make install   - Install required dependencies"
 
@@ -39,3 +40,8 @@ fmt:
 clippy:
 	@echo "Running clippy..."
 	cargo clippy --all-targets -- -D warnings
+
+coverage:
+	@echo "Generating coverage report..."
+	cargo llvm-cov --html
+	@echo "Coverage report generated in target/llvm-cov/html/index.html"
