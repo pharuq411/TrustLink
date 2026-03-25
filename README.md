@@ -398,6 +398,24 @@ let attestations = contract.get_subject_attestations(&user_address, &0, &10);
 let issued = contract.get_issuer_attestations(&issuer_address, &0, &10);
 ```
 
+### Issuer Activity Stats
+
+Every registered issuer has an `IssuerStats` record that is updated atomically alongside each attestation operation. Consumers can use these metrics to assess issuer trustworthiness before relying on their attestations.
+
+```rust
+let stats = contract.get_issuer_stats(&issuer_address);
+// stats.total_issued   — total attestations ever created by this issuer
+// stats.total_revoked  — total attestations revoked by this issuer
+// stats.registered_at  — ledger timestamp when the issuer was first registered
+```
+
+The revocation rate (`total_revoked as f64 / total_issued as f64`) is a useful signal:
+- A high rate may indicate an issuer that frequently issues incorrect or fraudulent attestations.
+- A low rate on a high-volume issuer is a positive trustworthiness signal.
+- `registered_at` lets consumers weight newer issuers differently from long-standing ones.
+
+Stats for an address that has never been registered return zeroed defaults (`total_issued: 0`, `total_revoked: 0`, `registered_at: 0`).
+
 ## Integration Example
 
 Here's how another contract would verify attestations:

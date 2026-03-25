@@ -978,3 +978,127 @@ fn test_multisig_unregistered_proposer_rejected() {
         client.try_propose_attestation(&unregistered, &subject, &claim_type, &required, &2);
     assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
 }
+
+// ── IssuerStats tests ────────────────────────────────────────────────────────
+
+#[test]
+fn test_issuer_stats_initialized_on_register() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_, issuer, client) = setup(&env);
+
+    let stats = client.get_issuer_stats(&issuer);
+    assert_eq!(stats.total_issued, 0);
+    assert_eq!(stats.total_revoked, 0);
+    assert_eq!(stats.registered_at, 1_000);
+}
+
+#[test]
+fn test_total_issued_increments_on_create() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    assert_eq!(client.get_issuer_stats(&issuer).total_issued, 1);
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    assert_eq!(client.get_issuer_stats(&issuer).total_issued, 2);
+}
+
+#[test]
+fn test_total_revoked_increments_on_revoke() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id = client.create_attestation(&issuer, &subject, &claim_type, &None, &None, &None);
+    assert_eq!(client.get_issuer_stats(&issuer).total_revoked, 0);
+
+    client.revoke_attestation(&issuer, &id);
+    let stats = client.get_issuer_stats(&issuer);
+    assert_eq!(stats.total_issued, 1);
+    assert_eq!(stats.total_revoked, 1);
+}
+
+#[test]
+fn test_stats_batch_create_and_revoke() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, issuer, client) = setup(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let mut subjects = soroban_sdk::Vec::new(&env);
+    let subject_a = Address::generate(&env);
+    let subject_b = Address::generate(&env);
+    let subject_c = Address::generate(&env);
+    subjects.push_back(subject_a.clone());
+    subjects.push_back(subject_b.clone());
+    subjects.push_back(subject_c.clone());
+
+    let ids = client.create_attestations_batch(&issuer, &subjects, &claim_type, &None);
+    assert_eq!(client.get_issuer_stats(&issuer).total_issued, 3);
+
+    // Batch revoke two of them.
+    let mut to_revoke = soroban_sdk::Vec::new(&env);
+    to_revoke.push_back(ids.get(0).unwrap());
+    to_revoke.push_back(ids.get(1).unwrap());
+    client.revoke_attestations_batch(&issuer, &to_revoke);
+
+    let stats = client.get_issuer_stats(&issuer);
+    assert_eq!(stats.total_issued, 3);
+    assert_eq!(stats.total_revoked, 2);
+}
+
+#[test]
+fn test_stats_unregistered_issuer_returns_zero_defaults() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, _, client) = setup(&env);
+    let stranger = Address::generate(&env);
+
+    let stats = client.get_issuer_stats(&stranger);
+    assert_eq!(stats.total_issued, 0);
+    assert_eq!(stats.total_revoked, 0);
+    assert_eq!(stats.registered_at, 0);
+}
+
+#[test]
+fn test_stats_independent_per_issuer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, issuer1, client) = setup(&env);
+    let issuer2 = Address::generate(&env);
+    client.register_issuer(&admin, &issuer2);
+
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "KYC_PASSED");
+
+    let id1 = client.create_attestation(&issuer1, &subject, &claim_type, &None, &None, &None);
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.create_attestation(&issuer2, &subject, &claim_type, &None, &None, &None);
+    env.ledger().with_mut(|li| li.timestamp = 2_000);
+    client.create_attestation(&issuer2, &subject, &claim_type, &None, &None, &None);
+
+    client.revoke_attestation(&issuer1, &id1);
+
+    let s1 = client.get_issuer_stats(&issuer1);
+    let s2 = client.get_issuer_stats(&issuer2);
+
+    assert_eq!(s1.total_issued, 1);
+    assert_eq!(s1.total_revoked, 1);
+    assert_eq!(s2.total_issued, 2);
+    assert_eq!(s2.total_revoked, 0);
+}

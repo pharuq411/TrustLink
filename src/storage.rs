@@ -27,7 +27,7 @@
 //!   used for pagination via `list_claim_types`.
 //! - `FeeConfig` — global attestation fee settings.
 
-use crate::types::{Attestation, ClaimTypeInfo, Error, FeeConfig, IssuerMetadata, MultiSigProposal, TtlConfig};
+use crate::types::{Attestation, ClaimTypeInfo, Error, FeeConfig, IssuerMetadata, IssuerStats, MultiSigProposal, TtlConfig};
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 /// Keys used to address data in contract storage.
@@ -59,6 +59,8 @@ pub enum StorageKey {
     ClaimTypeList,
     /// A multi-sig attestation proposal keyed by its ID.
     MultiSigProposal(String),
+    /// Activity metrics for a registered issuer.
+    IssuerStats(Address),
 }
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -320,5 +322,43 @@ impl Storage {
         env.storage()
             .persistent()
             .has(&StorageKey::MultiSigProposal(id.clone()))
+    }
+
+    /// Retrieve activity stats for `issuer`, or a zeroed default if not yet written.
+    pub fn get_issuer_stats(env: &Env, issuer: &Address) -> IssuerStats {
+        env.storage()
+            .persistent()
+            .get(&StorageKey::IssuerStats(issuer.clone()))
+            .unwrap_or(IssuerStats {
+                total_issued: 0,
+                total_revoked: 0,
+                registered_at: 0,
+            })
+    }
+
+    /// Persist `stats` for `issuer` and refresh its TTL.
+    pub fn set_issuer_stats(env: &Env, issuer: &Address, stats: &IssuerStats) {
+        let key = StorageKey::IssuerStats(issuer.clone());
+        let ttl = get_ttl_lifetime(env);
+        env.storage().persistent().set(&key, stats);
+        env.storage().persistent().extend_ttl(&key, ttl, ttl);
+    }
+
+    /// Initialise stats for a newly registered issuer (sets `registered_at`).
+    /// If stats already exist (re-registration after removal) the timestamp is
+    /// preserved and counters are left unchanged.
+    pub fn init_issuer_stats(env: &Env, issuer: &Address, registered_at: u64) {
+        let key = StorageKey::IssuerStats(issuer.clone());
+        if !env.storage().persistent().has(&key) {
+            Self::set_issuer_stats(
+                env,
+                issuer,
+                &IssuerStats {
+                    total_issued: 0,
+                    total_revoked: 0,
+                    registered_at,
+                },
+            );
+        }
     }
 }
