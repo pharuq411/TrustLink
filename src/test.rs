@@ -732,3 +732,249 @@ fn test_tags_length_limits() {
     );
     assert_eq!(res2, Err(Ok(types::Error::TagTooLong)));
 }
+
+// ── Multi-sig attestation tests ──────────────────────────────────────────────
+
+fn setup_multisig(
+    env: &Env,
+) -> (
+    Address,
+    Address,
+    Address,
+    Address,
+    TrustLinkContractClient<'_>,
+) {
+    let (_, client) = create_test_contract(env);
+    let admin = Address::generate(env);
+    let issuer1 = Address::generate(env);
+    let issuer2 = Address::generate(env);
+    let issuer3 = Address::generate(env);
+    client.initialize(&admin, &None);
+    client.register_issuer(&admin, &issuer1);
+    client.register_issuer(&admin, &issuer2);
+    client.register_issuer(&admin, &issuer3);
+    (issuer1, issuer2, issuer3, admin, client)
+}
+
+#[test]
+fn test_multisig_2_of_3_activates_on_second_signature() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &2);
+
+    // After proposal, attestation should NOT exist yet.
+    let proposal = client.get_multisig_proposal(&proposal_id);
+    assert_eq!(proposal.signers.len(), 1);
+    assert!(!proposal.finalized);
+    assert!(!client.has_valid_claim(&subject, &claim_type));
+
+    // Second signature reaches threshold → attestation activated.
+    client.cosign_attestation(&issuer2, &proposal_id);
+
+    let proposal = client.get_multisig_proposal(&proposal_id);
+    assert!(proposal.finalized);
+    assert!(client.has_valid_claim(&subject, &claim_type));
+}
+
+#[test]
+fn test_multisig_3_of_3_requires_all_signers() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &3);
+
+    client.cosign_attestation(&issuer2, &proposal_id);
+    assert!(!client.has_valid_claim(&subject, &claim_type));
+
+    client.cosign_attestation(&issuer3, &proposal_id);
+    assert!(client.has_valid_claim(&subject, &claim_type));
+}
+
+#[test]
+fn test_multisig_non_required_signer_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, admin, client) = setup_multisig(&env);
+    let outsider = Address::generate(&env);
+    client.register_issuer(&admin, &outsider);
+
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &2);
+
+    let result = client.try_cosign_attestation(&outsider, &proposal_id);
+    assert_eq!(result, Err(Ok(types::Error::NotRequiredSigner)));
+}
+
+#[test]
+fn test_multisig_duplicate_cosign_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &3);
+
+    // issuer1 already signed on proposal creation.
+    let result = client.try_cosign_attestation(&issuer1, &proposal_id);
+    assert_eq!(result, Err(Ok(types::Error::AlreadySigned)));
+}
+
+#[test]
+fn test_multisig_expired_proposal_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &2);
+
+    // Advance past the 7-day expiry window.
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1_000 + 7 * 24 * 60 * 60 + 1);
+
+    let result = client.try_cosign_attestation(&issuer2, &proposal_id);
+    assert_eq!(result, Err(Ok(types::Error::ProposalExpired)));
+}
+
+#[test]
+fn test_multisig_invalid_threshold_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    // threshold 0 is invalid.
+    let result =
+        client.try_propose_attestation(&issuer1, &subject, &claim_type, &required, &0);
+    assert_eq!(result, Err(Ok(types::Error::InvalidThreshold)));
+
+    // threshold > signer count is invalid.
+    let result =
+        client.try_propose_attestation(&issuer1, &subject, &claim_type, &required, &4);
+    assert_eq!(result, Err(Ok(types::Error::InvalidThreshold)));
+}
+
+#[test]
+fn test_multisig_proposal_emits_events() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let proposal_id =
+        client.propose_attestation(&issuer1, &subject, &claim_type, &required, &2);
+
+    // Verify ms_prop event was emitted.
+    let events = env.events().all();
+    let mut found_prop = false;
+    for (_, topics, _) in events.iter() {
+        let topic0: soroban_sdk::Symbol =
+            soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if topic0 == soroban_sdk::symbol_short!("ms_prop") {
+            found_prop = true;
+            break;
+        }
+    }
+    assert!(found_prop, "ms_prop event not found");
+
+    // Co-sign and verify ms_sign + ms_actv events.
+    client.cosign_attestation(&issuer2, &proposal_id);
+
+    let events = env.events().all();
+    let mut found_sign = false;
+    let mut found_actv = false;
+    for (_, topics, _) in events.iter() {
+        let topic0: soroban_sdk::Symbol =
+            soroban_sdk::TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if topic0 == soroban_sdk::symbol_short!("ms_sign") {
+            found_sign = true;
+        }
+        if topic0 == soroban_sdk::symbol_short!("ms_actv") {
+            found_actv = true;
+        }
+    }
+    assert!(found_sign, "ms_sign event not found");
+    assert!(found_actv, "ms_actv event not found");
+}
+
+#[test]
+fn test_multisig_unregistered_proposer_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (issuer1, issuer2, issuer3, _, client) = setup_multisig(&env);
+    let unregistered = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let claim_type = String::from_str(&env, "ACCREDITED_INVESTOR");
+
+    let mut required = soroban_sdk::Vec::new(&env);
+    required.push_back(issuer1.clone());
+    required.push_back(issuer2.clone());
+    required.push_back(issuer3.clone());
+
+    let result =
+        client.try_propose_attestation(&unregistered, &subject, &claim_type, &required, &2);
+    assert_eq!(result, Err(Ok(types::Error::Unauthorized)));
+}

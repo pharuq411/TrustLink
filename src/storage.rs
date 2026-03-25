@@ -27,7 +27,7 @@
 //!   used for pagination via `list_claim_types`.
 //! - `FeeConfig` — global attestation fee settings.
 
-use crate::types::{Attestation, ClaimTypeInfo, Error, FeeConfig, IssuerMetadata, TtlConfig};
+use crate::types::{Attestation, ClaimTypeInfo, Error, FeeConfig, IssuerMetadata, MultiSigProposal, TtlConfig};
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 /// Keys used to address data in contract storage.
@@ -57,6 +57,8 @@ pub enum StorageKey {
     ClaimType(String),
     /// Ordered list of registered claim type identifiers.
     ClaimTypeList,
+    /// A multi-sig attestation proposal keyed by its ID.
+    MultiSigProposal(String),
 }
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -292,5 +294,31 @@ impl Storage {
             .persistent()
             .get(&StorageKey::ClaimTypeList)
             .unwrap_or(Vec::new(env))
+    }
+
+    /// Persist a [`MultiSigProposal`] and refresh its TTL.
+    pub fn set_multisig_proposal(env: &Env, proposal: &MultiSigProposal) {
+        let key = StorageKey::MultiSigProposal(proposal.id.clone());
+        let ttl = get_ttl_lifetime(env);
+        env.storage().persistent().set(&key, proposal);
+        env.storage().persistent().extend_ttl(&key, ttl, ttl);
+    }
+
+    /// Retrieve a [`MultiSigProposal`] by ID.
+    ///
+    /// # Errors
+    /// - [`Error::NotFound`] — no proposal with that ID exists.
+    pub fn get_multisig_proposal(env: &Env, id: &String) -> Result<MultiSigProposal, Error> {
+        env.storage()
+            .persistent()
+            .get(&StorageKey::MultiSigProposal(id.clone()))
+            .ok_or(Error::NotFound)
+    }
+
+    /// Return `true` if a proposal with `id` exists.
+    pub fn has_multisig_proposal(env: &Env, id: &String) -> bool {
+        env.storage()
+            .persistent()
+            .has(&StorageKey::MultiSigProposal(id.clone()))
     }
 }

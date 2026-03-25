@@ -2,6 +2,9 @@
 
 use soroban_sdk::{contracterror, contracttype, xdr::ToXdr, Address, Bytes, Env, String, Vec};
 
+/// Default lifetime for a multi-sig proposal: 7 days in seconds.
+pub const MULTISIG_PROPOSAL_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContractMetadata {
@@ -67,6 +70,32 @@ pub enum AttestationStatus {
     Pending,
 }
 
+/// A multi-sig attestation proposal that becomes active once `threshold` issuers have co-signed.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiSigProposal {
+    /// Unique proposal identifier (hash of proposer+subject+claim_type+timestamp).
+    pub id: String,
+    /// The issuer who created the proposal.
+    pub proposer: Address,
+    /// The subject the attestation is about.
+    pub subject: Address,
+    /// The claim type being attested.
+    pub claim_type: String,
+    /// All addresses that must co-sign (includes proposer).
+    pub required_signers: Vec<Address>,
+    /// Number of signers needed to activate the attestation.
+    pub threshold: u32,
+    /// Addresses that have already signed (proposer signs on creation).
+    pub signers: Vec<Address>,
+    /// Ledger timestamp when the proposal was created.
+    pub created_at: u64,
+    /// Ledger timestamp after which the proposal expires if not completed.
+    pub expires_at: u64,
+    /// Whether the proposal has been finalized into an active attestation.
+    pub finalized: bool,
+}
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -85,10 +114,20 @@ pub enum Error {
     FeeTokenRequired = 13,
     TooManyTags = 14,
     TagTooLong = 15,
+    /// Threshold must be >= 1 and <= number of required signers.
+    InvalidThreshold = 16,
+    /// The signer is not in the proposal's required_signers list.
+    NotRequiredSigner = 17,
+    /// The signer has already co-signed this proposal.
+    AlreadySigned = 18,
+    /// The proposal has already been finalized.
+    ProposalFinalized = 19,
+    /// The proposal has expired without reaching threshold.
+    ProposalExpired = 20,
 }
 
 impl Attestation {
-    fn hash_payload(env: &Env, payload: &Bytes) -> String {
+    pub fn hash_payload(env: &Env, payload: &Bytes) -> String {
         let hash = env.crypto().sha256(payload).to_array();
         const HEX: &[u8; 16] = b"0123456789abcdef";
 
@@ -153,5 +192,25 @@ impl Attestation {
         }
 
         AttestationStatus::Valid
+    }
+}
+
+impl MultiSigProposal {
+    /// Generate a deterministic proposal ID from proposer + subject + claim_type + timestamp.
+    pub fn generate_id(
+        env: &Env,
+        proposer: &Address,
+        subject: &Address,
+        claim_type: &String,
+        timestamp: u64,
+    ) -> String {
+        let mut payload = Bytes::new(env);
+        // Prefix to distinguish from regular attestation IDs.
+        payload.append(&Bytes::from_slice(env, b"multisig:"));
+        payload.append(&proposer.clone().to_xdr(env));
+        payload.append(&subject.clone().to_xdr(env));
+        payload.append(&claim_type.clone().to_xdr(env));
+        payload.append(&timestamp.to_xdr(env));
+        Attestation::hash_payload(env, &payload)
     }
 }

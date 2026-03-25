@@ -317,6 +317,62 @@ if fully_verified {
 contract.revoke_attestation(&issuer, &attestation_id);
 ```
 
+### Multi-Sig Attestations
+
+High-value claims (e.g. `ACCREDITED_INVESTOR`) can require M-of-N registered issuers to co-sign before the attestation becomes active. This prevents a single compromised issuer from unilaterally issuing sensitive credentials.
+
+**Flow:**
+1. A registered issuer calls `propose_attestation` — they automatically count as the first signer.
+2. Other required issuers call `cosign_attestation` with the returned `proposal_id`.
+3. Once the number of signatures reaches `threshold`, the attestation is finalized and stored as a normal active attestation.
+4. Proposals expire after 7 days if the threshold is not reached.
+
+```rust
+// Build the required-signers list (all must be registered issuers)
+let mut required_signers = soroban_sdk::Vec::new(&env);
+required_signers.push_back(issuer_a.clone());
+required_signers.push_back(issuer_b.clone());
+required_signers.push_back(issuer_c.clone());
+
+// Propose a 2-of-3 multi-sig attestation
+let proposal_id = contract.propose_attestation(
+    &issuer_a,                                          // proposer (auto-signs)
+    &user_address,                                      // subject
+    &String::from_str(&env, "ACCREDITED_INVESTOR"),     // claim type
+    &required_signers,                                  // all required signers
+    &2,                                                 // threshold
+);
+
+// issuer_b co-signs — threshold reached, attestation activated
+contract.cosign_attestation(&issuer_b, &proposal_id);
+
+assert!(contract.has_valid_claim(&user_address, &String::from_str(&env, "ACCREDITED_INVESTOR")));
+```
+
+**Inspect a proposal:**
+```rust
+let proposal = contract.get_multisig_proposal(&proposal_id);
+// proposal.signers     — addresses that have signed so far
+// proposal.threshold   — required number of signatures
+// proposal.finalized   — true once the attestation is active
+// proposal.expires_at  — unix timestamp after which cosigning is rejected
+```
+
+**Error cases:**
+- `InvalidThreshold` — threshold is 0 or exceeds the number of required signers
+- `Unauthorized` — proposer or a required signer is not a registered issuer
+- `NotRequiredSigner` — cosigner is not in the proposal's required-signers list
+- `AlreadySigned` — the issuer has already co-signed this proposal
+- `ProposalFinalized` — the proposal has already been activated
+- `ProposalExpired` — the 7-day window has passed without reaching threshold
+
+**Events emitted:**
+```
+topics: ["ms_prop", subject_address]   data: (proposal_id, proposer, threshold)
+topics: ["ms_sign", signer_address]    data: (proposal_id, signatures_so_far, threshold)
+topics: ["ms_actv"]                    data: (proposal_id, attestation_id)
+```
+
 ### Query Attestations
 
 ```rust
@@ -392,6 +448,11 @@ TrustLink defines clear error types:
 - `DuplicateAttestation`: Attestation with same hash already exists
 - `AlreadyRevoked`: Attestation already revoked
 - `Expired`: Attestation has expired
+- `InvalidThreshold`: Multi-sig threshold is 0 or exceeds signer count
+- `NotRequiredSigner`: Cosigner is not in the proposal's required-signers list
+- `AlreadySigned`: Issuer has already co-signed the proposal
+- `ProposalFinalized`: Proposal has already been activated into an attestation
+- `ProposalExpired`: Proposal window (7 days) elapsed without reaching threshold
 
 ## Events
 

@@ -14,7 +14,7 @@ use crate::events::Events;
 use crate::storage::Storage;
 use crate::types::{
     Attestation, AttestationStatus, ClaimTypeInfo, ContractMetadata, Error, FeeConfig,
-    IssuerMetadata, TtlConfig,
+    IssuerMetadata, MultiSigProposal, TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
 };
 use crate::validation::Validation;
 
@@ -768,8 +768,162 @@ impl TrustLinkContract {
         paginate_strings(&env, Storage::get_claim_type_list(&env), start, limit)
     }
 
-    pub fn get_version(env: Env) -> Result<String, Error> {
-        Storage::get_version(&env).ok_or(Error::NotInitialized)
+    /// Create a multi-sig attestation proposal.
+    ///
+    /// The proposer automatically counts as the first signer. The proposal
+    /// expires after `MULTISIG_PROPOSAL_TTL_SECS` seconds if not completed.
+    ///
+    /// # Errors
+    /// - [`Error::Unauthorized`] — proposer is not a registered issuer, or any
+    ///   address in `required_signers` is not a registered issuer.
+    /// - [`Error::InvalidThreshold`] — threshold is 0 or exceeds signer count.
+    pub fn propose_attestation(
+        env: Env,
+        proposer: Address,
+        subject: Address,
+        claim_type: String,
+        required_signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<String, Error> {
+        proposer.require_auth();
+        Validation::require_issuer(&env, &proposer)?;
+
+        // Validate all required signers are registered issuers.
+        for signer in required_signers.iter() {
+            Validation::require_issuer(&env, &signer)?;
+        }
+
+        let signer_count = required_signers.len();
+        if threshold == 0 || threshold > signer_count {
+            return Err(Error::InvalidThreshold);
+        }
+
+        let timestamp = env.ledger().timestamp();
+        let proposal_id =
+            MultiSigProposal::generate_id(&env, &proposer, &subject, &claim_type, timestamp);
+
+        // Proposer auto-signs on creation.
+        let mut signers = Vec::new(&env);
+        signers.push_back(proposer.clone());
+
+        let proposal = MultiSigProposal {
+            id: proposal_id.clone(),
+            proposer: proposer.clone(),
+            subject: subject.clone(),
+            claim_type,
+            required_signers,
+            threshold,
+            signers,
+            created_at: timestamp,
+            expires_at: timestamp + MULTISIG_PROPOSAL_TTL_SECS,
+            finalized: false,
+        };
+
+        Storage::set_multisig_proposal(&env, &proposal);
+        Events::multisig_proposed(&env, &proposal_id, &proposer, &subject, threshold);
+        Ok(proposal_id)
+    }
+
+    /// Co-sign an existing multi-sig proposal.
+    ///
+    /// When the number of signatures reaches `threshold`, the attestation is
+    /// automatically finalized and stored as an active attestation.
+    ///
+    /// # Errors
+    /// - [`Error::NotFound`] — proposal does not exist.
+    /// - [`Error::ProposalExpired`] — proposal window has passed.
+    /// - [`Error::ProposalFinalized`] — proposal already activated.
+    /// - [`Error::NotRequiredSigner`] — issuer is not in the required signers list.
+    /// - [`Error::AlreadySigned`] — issuer has already co-signed.
+    pub fn cosign_attestation(
+        env: Env,
+        issuer: Address,
+        proposal_id: String,
+    ) -> Result<(), Error> {
+        issuer.require_auth();
+        Validation::require_issuer(&env, &issuer)?;
+
+        let mut proposal = Storage::get_multisig_proposal(&env, &proposal_id)?;
+
+        if proposal.finalized {
+            return Err(Error::ProposalFinalized);
+        }
+
+        let current_time = env.ledger().timestamp();
+        if current_time >= proposal.expires_at {
+            return Err(Error::ProposalExpired);
+        }
+
+        // Verify issuer is in the required signers list.
+        let mut is_required = false;
+        for signer in proposal.required_signers.iter() {
+            if signer == issuer {
+                is_required = true;
+                break;
+            }
+        }
+        if !is_required {
+            return Err(Error::NotRequiredSigner);
+        }
+
+        // Check for duplicate signature.
+        for signer in proposal.signers.iter() {
+            if signer == issuer {
+                return Err(Error::AlreadySigned);
+            }
+        }
+
+        proposal.signers.push_back(issuer.clone());
+        let sig_count = proposal.signers.len();
+
+        Events::multisig_cosigned(&env, &proposal_id, &issuer, sig_count, proposal.threshold);
+
+        if sig_count >= proposal.threshold {
+            // Threshold reached — finalize into an active attestation.
+            proposal.finalized = true;
+            Storage::set_multisig_proposal(&env, &proposal);
+
+            let attestation_id = Attestation::generate_id(
+                &env,
+                &proposal.proposer,
+                &proposal.subject,
+                &proposal.claim_type,
+                proposal.created_at,
+            );
+
+            let attestation = Attestation {
+                id: attestation_id.clone(),
+                issuer: proposal.proposer.clone(),
+                subject: proposal.subject.clone(),
+                claim_type: proposal.claim_type.clone(),
+                timestamp: proposal.created_at,
+                expiration: None,
+                revoked: false,
+                metadata: None,
+                valid_from: None,
+                imported: false,
+                bridged: false,
+                source_chain: None,
+                source_tx: None,
+                tags: None,
+            };
+
+            store_attestation(&env, &attestation);
+            Events::attestation_created(&env, &attestation);
+            Events::multisig_activated(&env, &proposal_id, &attestation_id);
+        } else {
+            Storage::set_multisig_proposal(&env, &proposal);
+        }
+
+        Ok(())
+    }
+
+    /// Retrieve a multi-sig proposal by ID.
+    pub fn get_multisig_proposal(env: Env, proposal_id: String) -> Result<MultiSigProposal, Error> {
+        Storage::get_multisig_proposal(&env, &proposal_id)
+    }
+
+    pub fn get_version(env: Env) -> Result<String, Error> {        Storage::get_version(&env).ok_or(Error::NotInitialized)
     }
 
     pub fn get_contract_metadata(env: Env) -> Result<ContractMetadata, Error> {

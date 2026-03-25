@@ -113,4 +113,40 @@ impl Events {
             description.clone(),
         );
     }
+
+    /// Emitted when a new multi-sig proposal is created.
+    pub fn multisig_proposed(
+        env: &Env,
+        proposal_id: &String,
+        proposer: &Address,
+        subject: &Address,
+        threshold: u32,
+    ) {
+        env.events().publish(
+            (symbol_short!("ms_prop"), subject.clone()),
+            (proposal_id.clone(), proposer.clone(), threshold),
+        );
+    }
+
+    /// Emitted when an issuer co-signs a multi-sig proposal.
+    pub fn multisig_cosigned(
+        env: &Env,
+        proposal_id: &String,
+        signer: &Address,
+        signatures_so_far: u32,
+        threshold: u32,
+    ) {
+        env.events().publish(
+            (symbol_short!("ms_sign"), signer.clone()),
+            (proposal_id.clone(), signatures_so_far, threshold),
+        );
+    }
+
+    /// Emitted when a multi-sig proposal reaches threshold and the attestation is activated.
+    pub fn multisig_activated(env: &Env, proposal_id: &String, attestation_id: &String) {
+        env.events().publish(
+            (symbol_short!("ms_actv"),),
+            (proposal_id.clone(), attestation_id.clone()),
+        );
+    }
 }
