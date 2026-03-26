@@ -2,38 +2,35 @@
 
 Thanks for your interest in contributing! This guide covers everything you need to go from zero to a merged PR.
 
-## Development environment
+## Local Development Setup
 
-The fastest way to get a fully configured Rust + Soroban environment is to use the included devcontainer. No manual tool installation needed.
+TrustLink uses [pre-commit](https://pre-commit.com) to enforce formatting and linting before every commit.
 
-**Open in VS Code (one click):**
-
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Olisachukwuma1/TrustLink)
-
-**Open in GitHub Codespaces:**
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Olisachukwuma1/TrustLink)
-
-After the container finishes building, verify everything works:
+**Install the hooks once after cloning:**
 
 ```bash
-# Run the test suite
-cargo test
-
-# Confirm Soroban CLI is available
-soroban --version
-
-# Confirm the wasm32 target is installed
-rustup target list --installed | grep wasm32
+pip install pre-commit   # or: brew install pre-commit
+pre-commit install
 ```
 
-`cargo-watch` is pre-installed for live test feedback during development:
+After that, every `git commit` automatically runs:
+
+| Hook | What it checks |
+|---|---|
+| `cargo fmt --all -- --check` | Rust formatting (Rustfmt) |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Rust lints (Clippy) |
+| `check-yaml` | Valid YAML syntax |
+| `end-of-file-fixer` | Files end with a newline |
+| `trailing-whitespace` | No trailing spaces |
+
+If a hook fails the commit is blocked. Fix the reported issues and `git commit` again.
+
+**Run hooks manually at any time:**
 
 ```bash
-cargo watch -x "test"
+pre-commit run --all-files   # check everything
+pre-commit run cargo-fmt     # check one hook by id
 ```
-
----
 
 ## New to Stellar or Soroban?
 
