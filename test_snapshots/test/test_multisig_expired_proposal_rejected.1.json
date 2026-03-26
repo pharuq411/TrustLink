@@ -288,7 +288,7 @@
                   "symbol": "MultiSigProposal"
                 },
                 {
-                  "string": "a15078e6f4cc776c11a0747b829a1a87"
+                  "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                 }
               ]
             },
@@ -308,7 +308,7 @@
                       "symbol": "MultiSigProposal"
                     },
                     {
-                      "string": "a15078e6f4cc776c11a0747b829a1a87"
+                      "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                     }
                   ]
                 },
@@ -352,7 +352,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "a15078e6f4cc776c11a0747b829a1a87"
+                        "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                       }
                     },
                     {
@@ -487,6 +487,43 @@
                                 "symbol": "fee_token"
                               },
                               "val": "void"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "GlobalStats"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "total_attestations"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_issuers"
+                              },
+                              "val": {
+                                "u64": 3
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_revocations"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
                             }
                           ]
                         }
@@ -1124,7 +1161,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "a15078e6f4cc776c11a0747b829a1a87"
+                  "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -1155,7 +1192,7 @@
               }
             ],
             "data": {
-              "string": "a15078e6f4cc776c11a0747b829a1a87"
+              "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
             }
           }
         }
@@ -1186,7 +1223,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "string": "a15078e6f4cc776c11a0747b829a1a87"
+                  "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                 }
               ]
             }
@@ -1276,7 +1313,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
                     {
-                      "string": "a15078e6f4cc776c11a0747b829a1a87"
+                      "string": "a15078e6f4cc776c11a0747b829a1a87a33d3fc5b65a3869ae6a3ca2ff5408de"
                     }
                   ]
                 }

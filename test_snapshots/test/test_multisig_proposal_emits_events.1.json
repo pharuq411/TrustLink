@@ -144,7 +144,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 }
               ]
             }
@@ -174,7 +174,7 @@
                   "symbol": "Attestation"
                 },
                 {
-                  "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                  "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                 }
               ]
             },
@@ -194,7 +194,7 @@
                       "symbol": "Attestation"
                     },
                     {
-                      "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                      "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                     }
                   ]
                 },
@@ -228,7 +228,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                        "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                       }
                     },
                     {
@@ -250,6 +250,12 @@
                     {
                       "key": {
                         "symbol": "metadata"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "revocation_reason"
                       },
                       "val": "void"
                     },
@@ -483,7 +489,61 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                      "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          518400
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "IssuerStats"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "IssuerStats"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "total_issued"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
                     }
                   ]
                 }
@@ -504,7 +564,7 @@
                   "symbol": "MultiSigProposal"
                 },
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 }
               ]
             },
@@ -524,7 +584,7 @@
                       "symbol": "MultiSigProposal"
                     },
                     {
-                      "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                      "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                     }
                   ]
                 },
@@ -568,7 +628,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                        "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                       }
                     },
                     {
@@ -675,7 +735,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                      "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                     }
                   ]
                 }
@@ -755,6 +815,43 @@
                                 "symbol": "fee_token"
                               },
                               "val": "void"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "GlobalStats"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "total_attestations"
+                              },
+                              "val": {
+                                "u64": 1
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_issuers"
+                              },
+                              "val": {
+                                "u64": 3
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_revocations"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
                             }
                           ]
                         }
@@ -1425,7 +1522,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -1456,7 +1553,7 @@
               }
             ],
             "data": {
-              "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+              "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
             }
           }
         }
@@ -1487,7 +1584,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 }
               ]
             }
@@ -1514,7 +1611,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 },
                 {
                   "u32": 2
@@ -1547,7 +1644,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                  "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -1581,10 +1678,10 @@
             "data": {
               "vec": [
                 {
-                  "string": "f2eac624c10e2cf1d5c726c1b07434d6"
+                  "string": "f2eac624c10e2cf1d5c726c1b07434d6784eb0304eb51dfdeeba25f18e8406aa"
                 },
                 {
-                  "string": "d8632105c7dfd7352d07ce99b7040d2f"
+                  "string": "d8632105c7dfd7352d07ce99b7040d2fece86c229a0772f0de7b2784f865093b"
                 }
               ]
             }

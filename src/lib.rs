@@ -15,8 +15,8 @@ use crate::events::Events;
 use crate::storage::Storage;
 use crate::types::{
     Attestation, AttestationStatus, AuditAction, AuditEntry, ClaimTypeInfo, ContractConfig,
-    ContractMetadata, Endorsement, Error, FeeConfig, GlobalStats, IssuerMetadata, IssuerStats,
-    IssuerTier, MultiSigProposal, TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
+    ContractMetadata, Endorsement, Error, FeeConfig, GlobalStats, HealthStatus, IssuerMetadata,
+    IssuerStats, IssuerTier, MultiSigProposal, TtlConfig, MULTISIG_PROPOSAL_TTL_SECS,
 };
 use crate::validation::Validation;
 
@@ -184,11 +184,11 @@ pub struct TrustLinkContract;
 #[contractimpl]
 impl TrustLinkContract {
     pub fn initialize(env: Env, admin: Address, ttl_days: Option<u32>) -> Result<(), Error> {
+        admin.require_auth();
+
         if Storage::has_admin(&env) {
             return Err(Error::AlreadyInitialized);
         }
-
-        admin.require_auth();
         Storage::set_admin(&env, &admin);
         Storage::set_version(&env, &String::from_str(&env, "1.0.0"));
         Storage::set_fee_config(&env, &default_fee_config(&admin));
@@ -271,7 +271,7 @@ impl TrustLinkContract {
 
         for attestation_id in attestation_ids.iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
-                if attestation.claim_type != claim_type {
+                if attestation.deleted || attestation.claim_type != claim_type {
                     continue;
                 }
                 if attestation.get_status(current_time) != AttestationStatus::Valid {
@@ -322,6 +322,39 @@ impl TrustLinkContract {
         Ok(())
     }
 
+    /// Pause the contract, disabling all attestation write operations.
+    ///
+    /// Read-only functions (`has_valid_claim`, `get_attestation`, etc.) remain
+    /// available while paused so that integrators can still verify existing
+    /// attestations during an incident.
+    ///
+    /// # Errors
+    /// - [`Error::Unauthorized`] — caller is not the admin.
+    pub fn pause(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+        Validation::require_admin(&env, &admin)?;
+        Storage::set_paused(&env, true);
+        Events::contract_paused(&env, &admin, env.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Unpause the contract, re-enabling attestation write operations.
+    ///
+    /// # Errors
+    /// - [`Error::Unauthorized`] — caller is not the admin.
+    pub fn unpause(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+        Validation::require_admin(&env, &admin)?;
+        Storage::set_paused(&env, false);
+        Events::contract_unpaused(&env, &admin, env.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Return `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        Storage::is_paused(&env)
+    }
+
     /// Creates a native attestation from a registered issuer about a subject.
     ///
     /// `issuer` and `subject` must be different addresses; self-attestation is
@@ -336,6 +369,7 @@ impl TrustLinkContract {
         tags: Option<Vec<String>>,
     ) -> Result<String, Error> {
         issuer.require_auth();
+        Validation::require_not_paused(&env)?;
         Validation::require_issuer(&env, &issuer)?;
         validate_metadata(&metadata)?;
         validate_tags(&tags)?;
@@ -371,6 +405,7 @@ impl TrustLinkContract {
             source_tx: None,
             tags,
             revocation_reason: None,
+            deleted: false,
         };
 
         store_attestation(&env, &attestation);
@@ -426,6 +461,7 @@ impl TrustLinkContract {
             source_tx: None,
             tags: None,
             revocation_reason: None,
+            deleted: false,
         };
 
         store_attestation(&env, &attestation);
@@ -486,6 +522,7 @@ impl TrustLinkContract {
             source_tx: Some(source_tx),
             tags: None,
             revocation_reason: None,
+            deleted: false,
         };
 
         store_attestation(&env, &attestation);
@@ -542,6 +579,7 @@ impl TrustLinkContract {
                 source_tx: None,
                 tags: None,
                 revocation_reason: None,
+                deleted: false,
             };
 
             store_attestation(&env, &attestation);
@@ -570,6 +608,8 @@ impl TrustLinkContract {
         reason: Option<String>,
     ) -> Result<(), Error> {
         issuer.require_auth();
+        Validation::require_not_paused(&env)?;
+        Validation::require_issuer(&env, &issuer)?;
         validate_reason(&reason)?;
         let mut attestation = Storage::get_attestation(&env, &attestation_id)?;
 
@@ -683,6 +723,7 @@ impl TrustLinkContract {
         new_expiration: Option<u64>,
     ) -> Result<(), Error> {
         issuer.require_auth();
+        Validation::require_issuer(&env, &issuer)?;
 
         if let Some(value) = new_expiration {
             if value <= env.ledger().timestamp() {
@@ -720,27 +761,28 @@ impl TrustLinkContract {
 
         for attestation_id in attestation_ids.iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
-                if attestation.claim_type == claim_type {
-                    match attestation.get_status(current_time) {
-                        AttestationStatus::Valid => {
-                            // Fire expiration hook if the attestation has an
-                            // expiration and is inside the notification window.
-                            if let Some(exp) = attestation.expiration {
-                                maybe_trigger_expiration_hook(
-                                    &env,
-                                    &subject,
-                                    &attestation_id,
-                                    exp,
-                                    current_time,
-                                );
-                            }
-                            return true;
+                if attestation.deleted || attestation.claim_type != claim_type {
+                    continue;
+                }
+                match attestation.get_status(current_time) {
+                    AttestationStatus::Valid => {
+                        // Fire expiration hook if the attestation has an
+                        // expiration and is inside the notification window.
+                        if let Some(exp) = attestation.expiration {
+                            maybe_trigger_expiration_hook(
+                                &env,
+                                &subject,
+                                &attestation_id,
+                                exp,
+                                current_time,
+                            );
                         }
-                        AttestationStatus::Expired => {
-                            Events::attestation_expired(&env, &attestation_id, &subject);
-                        }
-                        AttestationStatus::Revoked | AttestationStatus::Pending => {}
+                        return true;
                     }
+                    AttestationStatus::Expired => {
+                        Events::attestation_expired(&env, &attestation_id, &subject);
+                    }
+                    AttestationStatus::Revoked | AttestationStatus::Pending => {}
                 }
             }
         }
@@ -759,6 +801,9 @@ impl TrustLinkContract {
 
         for attestation_id in attestation_ids.iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
+                if attestation.deleted {
+                    continue;
+                }
                 if attestation.claim_type == claim_type && attestation.issuer == issuer {
                     match attestation.get_status(current_time) {
                         AttestationStatus::Valid => return true,
@@ -785,7 +830,8 @@ impl TrustLinkContract {
         for claim_type in claim_types.iter() {
             for attestation_id in attestation_ids.iter() {
                 if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
-                    if attestation.claim_type == claim_type
+                    if !attestation.deleted
+                        && attestation.claim_type == claim_type
                         && attestation.get_status(current_time) == AttestationStatus::Valid
                     {
                         return true;
@@ -808,7 +854,8 @@ impl TrustLinkContract {
         'claims: for claim_type in claim_types.iter() {
             for attestation_id in attestation_ids.iter() {
                 if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
-                    if attestation.claim_type == claim_type
+                    if !attestation.deleted
+                        && attestation.claim_type == claim_type
                         && attestation.get_status(current_time) == AttestationStatus::Valid
                     {
                         continue 'claims;
@@ -824,6 +871,40 @@ impl TrustLinkContract {
 
     pub fn get_attestation(env: Env, attestation_id: String) -> Result<Attestation, Error> {
         Storage::get_attestation(&env, &attestation_id)
+    }
+
+    /// Request GDPR deletion of an attestation.
+    ///
+    /// Only the subject of the attestation may call this. The attestation is
+    /// marked as `deleted` (soft-delete) and removed from the subject index so
+    /// it no longer appears in any query result. The record itself is retained
+    /// in storage for audit purposes, but is invisible to all public queries.
+    ///
+    /// A `DeletionRequested` event is emitted for off-chain compliance audit trails.
+    ///
+    /// # Errors
+    /// - [`Error::NotFound`] — attestation does not exist.
+    /// - [`Error::Unauthorized`] — caller is not the subject of the attestation.
+    pub fn request_deletion(
+        env: Env,
+        subject: Address,
+        attestation_id: String,
+    ) -> Result<(), Error> {
+        subject.require_auth();
+
+        let mut attestation = Storage::get_attestation(&env, &attestation_id)?;
+
+        if attestation.subject != subject {
+            return Err(Error::Unauthorized);
+        }
+
+        attestation.deleted = true;
+        Storage::set_attestation(&env, &attestation);
+        Storage::remove_subject_attestation(&env, &subject, &attestation_id);
+
+        let timestamp = env.ledger().timestamp();
+        Events::deletion_requested(&env, &subject, &attestation_id, timestamp);
+        Ok(())
     }
 
     /// Return the full audit log for `attestation_id`.
@@ -869,6 +950,9 @@ impl TrustLinkContract {
 
         for id in attestation_ids.iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &id) {
+                if attestation.deleted {
+                    continue;
+                }
                 if let Some(tags) = attestation.tags {
                     for t in tags.iter() {
                         if t == tag {
@@ -903,7 +987,7 @@ impl TrustLinkContract {
 
         for attestation_id in Storage::get_subject_attestations(&env, &subject).iter() {
             if let Ok(attestation) = Storage::get_attestation(&env, &attestation_id) {
-                if attestation.get_status(current_time) == AttestationStatus::Valid {
+                if !attestation.deleted && attestation.get_status(current_time) == AttestationStatus::Valid {
                     let mut already_present = false;
                     for existing in result.iter() {
                         if existing == attestation.claim_type {
@@ -935,7 +1019,8 @@ impl TrustLinkContract {
             index -= 1;
             if let Some(attestation_id) = attestation_ids.get(index) {
                 let attestation = Storage::get_attestation(&env, &attestation_id)?;
-                if attestation.claim_type == claim_type
+                if !attestation.deleted
+                    && attestation.claim_type == claim_type
                     && attestation.get_status(current_time) == AttestationStatus::Valid
                 {
                     return Ok(attestation);
@@ -1142,6 +1227,7 @@ impl TrustLinkContract {
                 source_tx: None,
                 tags: None,
                 revocation_reason: None,
+                deleted: false,
             };
 
             store_attestation(&env, &attestation);
@@ -1228,6 +1314,21 @@ impl TrustLinkContract {
     /// No authentication required — safe to call from dashboards and analytics tools.
     pub fn get_global_stats(env: Env) -> GlobalStats {
         Storage::get_global_stats(&env)
+    }
+
+    /// Lightweight health probe for monitoring dashboards and uptime checks.
+    ///
+    /// No authentication required. Returns `initialized: false` before
+    /// `initialize` has been called.
+    pub fn health_check(env: Env) -> HealthStatus {
+        let initialized = Storage::has_admin(&env);
+        let stats = Storage::get_global_stats(&env);
+        HealthStatus {
+            initialized,
+            admin_set: initialized,
+            issuer_count: stats.total_issuers,
+            total_attestations: stats.total_attestations,
+        }
     }
 
     pub fn get_contract_metadata(env: Env) -> Result<ContractMetadata, Error> {

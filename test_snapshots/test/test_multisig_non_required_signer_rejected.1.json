@@ -355,7 +355,7 @@
                   "symbol": "MultiSigProposal"
                 },
                 {
-                  "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                  "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                 }
               ]
             },
@@ -375,7 +375,7 @@
                       "symbol": "MultiSigProposal"
                     },
                     {
-                      "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                      "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                     }
                   ]
                 },
@@ -419,7 +419,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                        "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                       }
                     },
                     {
@@ -554,6 +554,43 @@
                                 "symbol": "fee_token"
                               },
                               "val": "void"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "GlobalStats"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "total_attestations"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_issuers"
+                              },
+                              "val": {
+                                "u64": 4
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_revocations"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
                             }
                           ]
                         }
@@ -1308,7 +1345,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                  "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -1339,7 +1376,7 @@
               }
             ],
             "data": {
-              "string": "99cee80ea265d03b73d5dd3de44d90c2"
+              "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
             }
           }
         }
@@ -1370,7 +1407,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
-                  "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                  "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                 }
               ]
             }
@@ -1460,7 +1497,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                     },
                     {
-                      "string": "99cee80ea265d03b73d5dd3de44d90c2"
+                      "string": "99cee80ea265d03b73d5dd3de44d90c2da86be341fa217024567018b9baec2de"
                     }
                   ]
                 }

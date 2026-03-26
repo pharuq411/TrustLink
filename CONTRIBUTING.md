@@ -38,11 +38,11 @@ Before diving in, read [docs/stellar-concepts.md](docs/stellar-concepts.md) for 
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Rust | stable (see `rust-toolchain.toml`) | https://rustup.rs |
-| wasm32 target | — | `rustup target add wasm32-unknown-unknown` |
-| Soroban CLI | latest | `cargo install --locked soroban-cli` |
+| Tool          | Version                            | Install                                    |
+| ------------- | ---------------------------------- | ------------------------------------------ |
+| Rust          | stable (see `rust-toolchain.toml`) | https://rustup.rs                          |
+| wasm32 target | —                                  | `rustup target add wasm32-unknown-unknown` |
+| Soroban CLI   | latest                             | `cargo install --locked soroban-cli`       |
 
 Verify your setup:
 
@@ -79,6 +79,53 @@ make test
 
 All tests must pass before submitting a PR.
 
+## Local Stellar Development Workflow
+
+Use a local Stellar Quickstart node when iterating on deployment and invoke flows to avoid testnet rate limits.
+
+### 1. Start local network
+
+```bash
+docker compose up -d
+# or: docker-compose up -d
+```
+
+This starts the `stellar/quickstart` standalone network from [docker-compose.yml](docker-compose.yml).
+
+### 2. Deploy and initialize locally
+
+```bash
+make local-deploy
+```
+
+What this does:
+
+- Builds the contract WASM.
+- Ensures local Soroban network + identity are configured.
+- Funds the local identity via Friendbot.
+- Deploys the contract.
+- Invokes `initialize`.
+- Writes the deployed contract ID to `.local.contract-id`.
+
+### 3. Local RPC endpoint
+
+Use this RPC URL for local calls and scripts:
+
+```text
+http://localhost:8000/soroban/rpc
+```
+
+Default local network values used by `scripts/setup_local.sh`:
+
+- Network name: `local`
+- Network passphrase: `Standalone Network ; February 2017`
+
+### 4. Stop local network
+
+```bash
+docker compose down
+```
+
 ## Building the Contract
 
 ```bash
@@ -106,6 +153,7 @@ Run both before every commit.
 ## PR Process
 
 1. **Branch** off `main` with a descriptive name:
+
    ```bash
    git checkout -b feat/your-feature
    # or
@@ -113,19 +161,23 @@ Run both before every commit.
    ```
 
 2. **Commit** with clear messages following the format:
+
    ```
    <type>: short description
 
    Optional longer explanation.
    ```
+
    Common types: `feat`, `fix`, `docs`, `test`, `refactor`.
 
 3. **Before pushing**, make sure:
+
    - [ ] `cargo test` passes
    - [ ] `cargo fmt -- --check` is clean
    - [ ] `cargo clippy --all-targets -- -D warnings` is clean
 
 4. **Open a PR** against `main`. Include:
+
    - What the change does and why
    - Any relevant issue numbers (`Closes #123`)
    - Notes for reviewers if the change is non-obvious
@@ -135,6 +187,7 @@ Run both before every commit.
 ## Reporting Issues
 
 Open a GitHub issue with:
+
 - A clear description of the problem or feature request
 - Steps to reproduce (for bugs)
 - Expected vs actual behaviour
